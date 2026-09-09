@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>Control de Préstamos</title>
+<meta name="theme-color" content="#2c4a72" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+  <!-- Pantalla de acceso -->
+  <div id="login-screen" class="login-screen">
+    <form id="login-form" class="login-card">
+      <div class="login-logo">💰</div>
+      <h1>Control de Préstamos</h1>
+      <p class="muted">Ingresa la contraseña para continuar</p>
+      <input
+        type="password"
+        id="login-password"
+        placeholder="Contraseña"
+        autocomplete="current-password"
+        required
+        autofocus
+      />
+      <button type="submit" class="btn-primary btn-block" id="login-submit">Entrar</button>
+      <p id="login-error" class="error-text" hidden></p>
+    </form>
+  </div>
+
+  <!-- Aplicacion -->
+  <div id="app-shell" class="app-shell" hidden>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="seal">CP</span>
+        <span class="word">Control de<br />Préstamos</span>
+      </div>
+      <nav class="side-nav">
+        <a href="#/dashboard" data-nav="dashboard"><span class="nav-icon">📊</span> Panel</a>
+        <a href="#/clients" data-nav="clients"><span class="nav-icon">👥</span> Clientes</a>
+        <a href="#/loans" data-nav="loans"><span class="nav-icon">📄</span> Préstamos</a>
+      </nav>
+      <button id="logout-btn" class="logout-btn"><span class="nav-icon">🚪</span> Cerrar sesión</button>
+      <div class="logout-hint">Tus datos quedan guardados de forma permanente en tu base de datos.</div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="topbar-row">
+          <h1 id="page-title">Panel</h1>
+          <span class="today num" id="topbar-date"></span>
+        </div>
+      </header>
+      <div id="app-content" class="app-content">
+        <p class="loading">Cargando…</p>
+      </div>
+    </main>
+
+    <nav class="bottom-nav">
+      <a href="#/dashboard" data-nav="dashboard"><span>📊</span><small>Panel</small></a>
+      <a href="#/clients" data-nav="clients"><span>👥</span><small>Clientes</small></a>
+      <a href="#/loans" data-nav="loans"><span>📄</span><small>Préstamos</small></a>
+    </nav>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toast-root"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

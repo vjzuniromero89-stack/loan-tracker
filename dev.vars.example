@@ -1,0 +1,7 @@
+# Copia este archivo a ".dev.vars" (sin ".example") para probar la app en tu
+# computadora con "npm run dev". NUNCA subas tu archivo ".dev.vars" real a
+# ningun repositorio publico: contiene la contrasena y las llaves de Supabase.
+APP_PASSWORD=cambia-esta-contrasena
+AUTH_SECRET=escribe-aqui-un-texto-largo-y-aleatorio-solo-para-desarrollo
+SUPABASE_URL=https://tu-proyecto.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=pega-aqui-tu-service-role-key
