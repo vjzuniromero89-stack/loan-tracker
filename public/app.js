@@ -119,11 +119,13 @@ function buildWaterfall(loan) {
 // total es capital (lo que se le prestó) y cuánto es ganancia (interés).
 function buildSplitSummary(totals) {
   const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-  const total = totals.totalAPagar > 0 ? totals.totalAPagar : totals.prestado + totals.ganancia;
-  if (!total) return "";
-  let pctCapital = Math.round((totals.prestado / total) * 100);
-  pctCapital = Math.min(Math.max(pctCapital, 0), 100);
-  const pctGanancia = 100 - pctCapital;
+  if (!totals.prestado) return "";
+  // La ganancia se muestra como porcentaje del capital prestado (lo mismo
+  // que el interés que le cobras al cliente): si prestas $5,000 al 40%,
+  // la ganancia es 40% y el capital ocupa el resto de la barra.
+  let pctGanancia = Math.round((totals.ganancia / totals.prestado) * 100);
+  pctGanancia = Math.min(Math.max(pctGanancia, 0), 100);
+  const pctCapital = 100 - pctGanancia;
 
   const seg = (pct, extraClass, label) =>
     `<div class="split-seg ${extraClass}" data-w="${pct}" style="width:0%">${pct >= 12 ? `<span>${pct}%</span>` : ""}</div>`;

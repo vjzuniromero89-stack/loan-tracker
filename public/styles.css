@@ -75,10 +75,11 @@ html {
 body {
   background-color: var(--bg);
   background-image:
-    radial-gradient(640px circle at 88% -8%, color-mix(in srgb, var(--profit) 20%, transparent), transparent 60%),
-    radial-gradient(760px circle at -12% 12%, color-mix(in srgb, var(--primary) 24%, transparent), transparent 62%),
-    radial-gradient(520px circle at 92% 92%, color-mix(in srgb, var(--success) 18%, transparent), transparent 60%),
-    radial-gradient(420px circle at 20% 96%, color-mix(in srgb, var(--profit) 14%, transparent), transparent 55%);
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 16%, var(--bg)) 0%, var(--bg) 42%, color-mix(in srgb, var(--profit) 16%, var(--bg)) 100%),
+    radial-gradient(900px circle at 92% -10%, color-mix(in srgb, var(--profit) 42%, transparent), transparent 62%),
+    radial-gradient(1000px circle at -15% 8%, color-mix(in srgb, var(--primary) 46%, transparent), transparent 65%),
+    radial-gradient(760px circle at 100% 100%, color-mix(in srgb, var(--success) 36%, transparent), transparent 62%),
+    radial-gradient(620px circle at 6% 100%, color-mix(in srgb, var(--profit) 30%, transparent), transparent 58%);
   background-repeat: no-repeat;
   background-attachment: fixed;
 }
