@@ -115,6 +115,41 @@ function buildWaterfall(loan) {
     </div>`;
 }
 
+// Barra de dos colores: cuánto de todo lo que este cliente va a pagar en
+// total es capital (lo que se le prestó) y cuánto es ganancia (interés).
+function buildSplitSummary(totals) {
+  const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const total = totals.totalAPagar > 0 ? totals.totalAPagar : totals.prestado + totals.ganancia;
+  if (!total) return "";
+  let pctCapital = Math.round((totals.prestado / total) * 100);
+  pctCapital = Math.min(Math.max(pctCapital, 0), 100);
+  const pctGanancia = 100 - pctCapital;
+
+  const seg = (pct, extraClass, label) =>
+    `<div class="split-seg ${extraClass}" data-w="${pct}" style="width:0%">${pct >= 12 ? `<span>${pct}%</span>` : ""}</div>`;
+
+  return `
+    <div class="split-summary">
+      <div class="split-summary-head">
+        <span class="split-legend"><span class="split-dot dot-primary"></span>Capital <b class="num">${pctCapital}%</b> <span class="muted">· ${formatMoney(round2(totals.prestado))}</span></span>
+        <span class="split-legend"><span class="split-dot dot-profit"></span>Ganancia <b class="num">${pctGanancia}%</b> <span class="muted">· ${formatMoney(round2(totals.ganancia))}</span></span>
+      </div>
+      <div class="split-bar">
+        ${seg(pctCapital, "seg-primary")}
+        ${seg(pctGanancia, "seg-profit")}
+      </div>
+    </div>`;
+}
+
+function animateSplitBars() {
+  const segs = document.querySelectorAll(".split-seg[data-w]");
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      segs.forEach((el) => { el.style.width = el.dataset.w + "%"; });
+    });
+  });
+}
+
 function animateWaterfall() {
   const fills = document.querySelectorAll(".wf-fill[data-w]");
   requestAnimationFrame(() => {
@@ -494,9 +529,11 @@ async function renderClientDetail(id) {
       acc.prestado += l.principal;
       acc.pagado += l.totalPaid;
       acc.pendiente += l.pendingBalance;
+      acc.ganancia += l.totalInterest;
+      acc.totalAPagar += l.totalToPay;
       return acc;
     },
-    { prestado: 0, pagado: 0, pendiente: 0 }
+    { prestado: 0, pagado: 0, pendiente: 0, ganancia: 0, totalAPagar: 0 }
   );
 
   const allPayments = client.loans
@@ -544,6 +581,7 @@ async function renderClientDetail(id) {
         <div class="stat-card accent-success"><div class="stat-icon">📥</div><div class="stat-label">Total pagado</div><div class="stat-value">${formatMoney(clientTotals.pagado)}</div></div>
         <div class="stat-card ${clientTotals.pendiente > 0 ? "accent-danger" : "accent-success"}"><div class="stat-icon">${clientTotals.pendiente > 0 ? "⚠️" : "✅"}</div><div class="stat-label">Saldo pendiente</div><div class="stat-value">${formatMoney(clientTotals.pendiente)}</div></div>
       </div>
+      ${client.loans.length ? buildSplitSummary(clientTotals) : ""}
     </div>
 
     <div class="panel">
@@ -571,6 +609,8 @@ async function renderClientDetail(id) {
       </div>
     </div>
   `;
+
+  animateSplitBars();
 
   contentEl.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", () => { location.hash = `#/loans/${row.dataset.id}`; });
