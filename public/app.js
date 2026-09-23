@@ -935,8 +935,14 @@ async function renderLoanDetail(id) {
 
     <div class="panel">
       <div class="panel-header"><h2>Calendario de cuotas</h2></div>
-      <div class="table-wrap"><table><thead><tr><th>Mes</th><th>Vence</th><th>Cuota</th><th>Pagado</th><th>Pendiente</th></tr></thead><tbody>
-        ${(loan.schedule || []).map(r => `<tr><td>${escapeHtml(new Date(r.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))}</td><td>${formatDate(r.due_date)}</td><td>${formatMoney(r.amount)}</td><td>${formatMoney(r.paid)}</td><td>${formatMoney(r.remaining)}</td></tr>`).join("")}
+      <div class="installment-summary" aria-label="Resumen de cuotas">
+        <div class="installment-summary-paid"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "paid").length}</strong><span>Pagadas</span></div>
+        <div class="installment-summary-partial"><strong>${(loan.schedule || []).filter(r => r.paid > 0 && r.remaining >= 0.005).length}</strong><span>Con pago parcial</span></div>
+        <div class="installment-summary-late"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "late").length}</strong><span>Atrasadas</span></div>
+        <div class="installment-summary-pending"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "pending").length}</strong><span>Pendientes</span></div>
+      </div>
+      <div class="table-wrap installment-table-wrap"><table class="installment-table"><thead><tr><th>Mes</th><th>Vence</th><th>Cuota</th><th>Pagado</th><th>Falta</th><th>Estado</th><th>Avance</th></tr></thead><tbody>
+        ${(loan.schedule || []).map(r => renderInstallment(r, todayStr())).join("")}
       </tbody></table></div>
     </div>
     <div class="panel">
@@ -976,6 +982,28 @@ async function renderLoanDetail(id) {
       });
     });
   });
+}
+
+function installmentStatus(row, today) {
+  if (row.remaining < 0.005) return { label: "Pagado", tone: "paid" };
+  if (row.due_date < today) return { label: row.paid > 0 ? "Pago parcial · atrasado" : "Atrasado", tone: "late" };
+  if (row.paid > 0) return { label: "Pago parcial", tone: "partial" };
+  return { label: "Pendiente", tone: "pending" };
+}
+
+function renderInstallment(row, today) {
+  const state = installmentStatus(row, today);
+  const progress = row.amount > 0 ? Math.min(100, Math.max(0, Math.round(row.paid / row.amount * 100))) : 100;
+  const month = new Date(row.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" });
+  return `<tr class="installment-row installment-row-${state.tone}">
+    <td><strong class="installment-month">${escapeHtml(month)}</strong><span class="installment-mobile-date">Vence ${formatDate(row.due_date)}</span></td>
+    <td>${formatDate(row.due_date)}</td>
+    <td>${formatMoney(row.amount)}</td>
+    <td>${formatMoney(row.paid)}</td>
+    <td><strong>${formatMoney(row.remaining)}</strong></td>
+    <td><span class="installment-badge installment-badge-${state.tone}">${state.label}</span></td>
+    <td><div class="installment-progress" role="progressbar" aria-label="Progreso de ${escapeHtml(month)}" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100"><span class="installment-progress-${state.tone}" style="width:${progress}%"></span></div><small>${progress}%</small></td>
+  </tr>`;
 }
 
 function openPaymentModal(loan) {

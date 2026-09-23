@@ -867,3 +867,46 @@ td.wrap, th.wrap { white-space: normal; }
   .stat-card .stat-value { font-size: 1.3rem; }
   table { min-width: 480px; }
 }
+
+/* Calendario de cuotas: estado calculado desde los pagos registrados. */
+.installment-summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 4px 0 18px; }
+.installment-summary > div { display: flex; flex-direction: column; gap: 4px; border-radius: 14px; padding: 13px 16px; background: var(--surface-alt); border: 1px solid var(--border); }
+.installment-summary strong { font-size: 1.4rem; line-height: 1; }
+.installment-summary span { font-size: 0.76rem; font-weight: 600; }
+.installment-summary-paid { color: #147451; }
+.installment-summary-partial { color: #976900; }
+.installment-summary-late { color: #ac3838; }
+.installment-summary-pending { color: var(--text-muted); }
+.installment-table { min-width: 830px; }
+.installment-table tbody tr { cursor: default; }
+.installment-table td { padding-top: 14px; padding-bottom: 14px; }
+.installment-month { text-transform: capitalize; }
+.installment-mobile-date { display: none; }
+.installment-row-paid { background: rgba(34, 150, 101, 0.055); }
+.installment-row-late { background: rgba(194, 63, 63, 0.055); }
+.installment-row-partial { background: rgba(204, 147, 31, 0.06); }
+.installment-badge { display: inline-flex; align-items: center; gap: 7px; border-radius: 99px; padding: 6px 10px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+.installment-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.installment-badge-paid { color: #147451; background: #def5e9; }
+.installment-badge-partial { color: #875d00; background: #fff0c7; }
+.installment-badge-late { color: #ac3838; background: #fce6e4; }
+.installment-badge-pending { color: #596579; background: #eef1f5; }
+.installment-progress { height: 7px; width: 95px; background: #e9edf2; border-radius: 99px; overflow: hidden; }
+.installment-progress span { display: block; height: 100%; border-radius: 99px; transition: width 0.35s ease; }
+.installment-progress-paid { background: #26a675; }
+.installment-progress-partial { background: #e1a927; }
+.installment-progress-late { background: #db6560; }
+.installment-progress-pending { background: #9eacc0; }
+.installment-table small { color: var(--text-muted); }
+@media (max-width: 680px) {
+  .installment-summary { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .installment-table { min-width: 0; }
+  .installment-table thead, .installment-table td:nth-child(2), .installment-table td:nth-child(3), .installment-table td:nth-child(4), .installment-table td:nth-child(7) { display: none; }
+  .installment-table tbody tr { display: grid; grid-template-columns: 1fr auto; gap: 5px 8px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
+  .installment-table td { border: 0; padding: 2px 6px; }
+  .installment-table td:first-child { grid-column: 1; grid-row: 1; }
+  .installment-table td:nth-child(5) { grid-column: 1; grid-row: 2; font-size: 0.8rem; }
+  .installment-table td:nth-child(5)::before { content: 'Falta: '; color: var(--text-muted); }
+  .installment-table td:nth-child(6) { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  .installment-mobile-date { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; }
+}

@@ -143,3 +143,7 @@ Antes de publicar esta versión, ejecuta `migrations/20260923_payment_installmen
 La primera cuota vence un mes después de `start_date`; para fechas como el 31, el vencimiento se ajusta al último día del mes. El sistema propone la cuota pendiente más antigua. Al registrar, eliges el mes y ves cómo se reparte el monto entre esa cuota y las siguientes; admite pagos parciales y varias cuotas en un solo pago. Guarda por separado el día del cobro y el número de la primera cuota a la que se aplica. En el detalle aparecen el calendario y los meses cubiertos por cada pago.
 
 Ejemplo: una cuota que vence en agosto y se cobra en septiembre queda registrada con fecha de cobro en septiembre y cuota de agosto. Las cuotas vencidas y todavía pendientes determinan el atraso actual. Los pagos anteriores se aplican cronológicamente a las cuotas más antiguas porque antes no se guardaba su mes; revisa manualmente los casos históricos que se habían atribuido a un mes distinto.
+
+### Estado visual de cada cuota
+
+El calendario muestra **Pagado** cuando la cuota está cubierta, **Pago parcial** si aún no vence, **Pago parcial · atrasado** si ya venció, **Atrasado** si venció sin pago y **Pendiente** para cuotas futuras sin pago. Los contadores y las barras se recalculan automáticamente después de registrar o eliminar un pago. Esta mejora visual no necesita otra migración SQL además de la incluida en este ZIP.
