@@ -1,6 +1,7 @@
 // Helpers de acceso a datos (Supabase/Postgres) compartidos entre rutas.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LoanRecord, PaymentRecord } from "./loanCalc";
+import { decodePayment } from "./paymentMetadata";
 import { CLIENTS_TABLE, LOANS_TABLE, PAYMENTS_TABLE } from "./supabase";
 
 export interface ClientRecord {
@@ -46,7 +47,8 @@ export async function fetchAllPaymentsGrouped(
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   const map = new Map<string, PaymentRecord[]>();
-  for (const p of (data || []) as PaymentRecord[]) {
+  for (const row of (data || []) as PaymentRecord[]) {
+    const p = decodePayment(row);
     const arr = map.get(p.loan_id) || [];
     arr.push(p);
     map.set(p.loan_id, arr);
@@ -65,5 +67,5 @@ export async function fetchPaymentsForLoan(
     .order("payment_date", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
-  return (data || []) as PaymentRecord[];
+  return ((data || []) as PaymentRecord[]).map(decodePayment);
 }

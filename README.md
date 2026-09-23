@@ -151,3 +151,9 @@ El calendario muestra **Pagado** cuando la cuota está cubierta, **Pago parcial*
 ### Portal del cliente (solo lectura)
 
 El enlace del cliente muestra para cada préstamo el calendario de cuotas con estados y avance, la nota del préstamo y un historial con fecha de cobro, mes aplicado, monto y nota de cada pago. El token del enlace solo habilita el GET de su propio portal; los endpoints que crean, editan o eliminan datos siguen protegidos por la sesión del dueño. No hay botones de edición en el portal. Esta mejora no requiere una migración adicional.
+
+### Compatibilidad cuando falta la columna de cuota
+
+Si la tabla de pagos todavía no tiene `installment_number`, el servidor detecta exclusivamente ese error y guarda el mes seleccionado junto con el pago en un formato interno dentro de `notes`. Al consultar el préstamo, el historial y el portal, recupera el número de cuota y muestra únicamente la nota que escribiste. Si después ejecutas la migración SQL, los pagos anteriores siguen leyéndose correctamente y los nuevos usarán la columna. Para este ZIP, la migración deja de ser obligatoria para registrar pagos.
+
+Ejemplo: cuota de agosto $900, pago de $1,400 aplicado desde agosto → agosto queda pagado y $500 se abonan a septiembre. El calendario, el saldo y el portal se recalculan a partir del mismo registro.

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { encodePaymentNotes, missingInstallmentColumn } from "./paymentMetadata";
 import { installments } from "./installments";
 import { computeLoan, type LoanRecord } from "./loanCalc";
 import { createSessionToken, verifySessionToken } from "./auth";
@@ -488,14 +489,20 @@ app.post("/api/loans/:id/payments", async (c) => {
     return c.json({ error: "Usa un monto válido con hasta dos decimales" }, 400);
   }
   const id = crypto.randomUUID();
-  const { error } = await supabase.from(PAYMENTS_TABLE).insert({
-    id,
-    loan_id: loanId,
-    amount,
-    payment_date: paymentDate,
-    installment_number: installmentNumber,
-    notes: (body.notes as string) || null,
-  });
+  const userNotes = typeof body.notes === "string" ? body.notes.trim() || null : null;
+  const paymentToInsert = {
+    id, loan_id: loanId, amount, payment_date: paymentDate,
+    installment_number: installmentNumber, notes: userNotes,
+  };
+  let { error } = await supabase.from(PAYMENTS_TABLE).insert(paymentToInsert);
+  // Solo ante la columna faltante: conservar la cuota dentro de notes. Nunca
+  // reintentar otros errores, para evitar duplicados o esconder fallos reales.
+  if (error && missingInstallmentColumn(error)) {
+    ({ error } = await supabase.from(PAYMENTS_TABLE).insert({
+      id, loan_id: loanId, amount, payment_date: paymentDate,
+      notes: encodePaymentNotes(installmentNumber, userNotes),
+    }));
+  }
   if (error) return c.json({ error: error.message }, 500);
 
   const payments = await fetchPaymentsForLoan(supabase, loanId);
