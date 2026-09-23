@@ -405,6 +405,11 @@ function clientFormHtml(client = {}) {
         <label>Dirección</label>
         <input type="text" id="f-address" value="${escapeHtml(client.address || "")}" />
       </div>
+      ${loan ? "" : `<div class="field full"><label for="f-payment-mode">Forma de cobrar *</label>
+        <select id="f-payment-mode"><option value="monthly">Cuotas mensuales durante todo el plazo</option><option value="interest_first">Cobrar interés primero y después capital</option></select></div>
+      <div class="field full" id="f-interest-months-field" hidden><label for="f-interest-months">Meses para cobrar el interés *</label>
+        <input id="f-interest-months" type="number" min="1" step="1" value="2" />
+        <small id="f-payment-preview" class="muted"></small></div>`}
       <div class="field full">
         <label>Notas</label>
         <textarea id="f-notes">${escapeHtml(client.notes || "")}</textarea>
@@ -754,22 +759,22 @@ function loanFormHtml(loan, clients, preselectedClient) {
       </div>
       <div class="field">
         <label>Monto prestado *</label>
-        <input type="number" id="f-principal" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="0.01" step="0.01" value="${loan ? loan.principal : ""}" required />
+        <input type="number" id="f-principal" min="0.01" step="0.01" value="${loan ? loan.principal : ""}" required />
       </div>
       <div class="field">
         <label>Interés total del préstamo (%) *</label>
-        <input type="number" id="f-rate" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="0" step="0.01" value="${loan ? (loan.extension?.original_rate ?? loan.interest_rate) : ""}" required />
+        <input type="number" id="f-rate" min="0" step="0.01" value="${loan ? (loan.extension?.original_rate ?? loan.interest_rate) : ""}" required />
       </div>
       <div class="field">
         <label>Plazo (meses) *</label>
-        <input type="number" id="f-term" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="1" step="1" value="${loan ? (loan.extension?.original_months ?? loan.term_months) : ""}" required />
+        <input type="number" id="f-term" min="1" step="1" value="${loan ? (loan.extension?.original_months ?? loan.term_months) : ""}" required />
       </div>
       <div class="field">
         <label>Fecha de inicio *</label>
-        <input type="date" id="f-start" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} value="${loan ? loan.start_date : todayStr()}" required />
+        <input type="date" id="f-start" value="${loan ? loan.start_date : todayStr()}" required />
       </div>
       <div class="field full">
-        <p class="muted" style="margin:0;font-size:0.85rem;">${loan?.extension || loan?.payment_plan ? "Este préstamo tiene un calendario acordado. Puedes editar la nota; las condiciones y los pagos quedan protegidos." : "Ejemplo: $5,000 al 40% = $2,000 de interés total → $7,000 a pagar, sea cual sea el plazo."}</p>
+        <p class="muted" style="margin:0;font-size:0.85rem;">${loan?.extension || loan?.payment_plan ? "Puedes modificar el préstamo inicial. La extensión se recalculará y los pagos registrados se conservarán si caben en el nuevo calendario." : "Ejemplo: $5,000 al 40% = $2,000 de interés total → $7,000 a pagar, sea cual sea el plazo."}</p>
       </div>
       <div class="field full">
         <label>Notas</label>
@@ -791,6 +796,22 @@ async function openLoanModal(loan, preselectedClient) {
     size: "lg",
     onMount: (root) => {
       root.querySelector("#cancel-btn").onclick = closeModal;
+      if (!isEdit) {
+        const updateMode = () => {
+          const mode = root.querySelector("#f-payment-mode").value;
+          const months = Number(root.querySelector("#f-term").value);
+          const interestMonths = Number(root.querySelector("#f-interest-months").value);
+          root.querySelector("#f-interest-months-field").hidden = mode !== "interest_first";
+          root.querySelector("#f-interest-months").max = String(Math.max(1, months - 1));
+          const totalInterest = Number(root.querySelector("#f-principal").value) * Number(root.querySelector("#f-rate").value) / 100;
+          const valid = Number.isInteger(interestMonths) && interestMonths > 0 && interestMonths < months;
+          root.querySelector("#f-payment-preview").textContent = mode !== "interest_first" ? "" : valid
+            ? `Interés: ${formatMoney(totalInterest / interestMonths)} por ${interestMonths} meses. Capital: ${formatMoney(Number(root.querySelector("#f-principal").value) / (months - interestMonths))} por ${months - interestMonths} meses.`
+            : "Los meses de interés deben ser menores que el plazo.";
+        };
+        ["#f-payment-mode", "#f-interest-months", "#f-principal", "#f-rate", "#f-term"].forEach(selector => root.querySelector(selector).addEventListener("input", updateMode));
+        updateMode();
+      }
       root.querySelector("#loan-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         const payload = {
@@ -800,6 +821,8 @@ async function openLoanModal(loan, preselectedClient) {
           term_months: root.querySelector("#f-term").value,
           start_date: root.querySelector("#f-start").value,
           notes: root.querySelector("#f-notes").value.trim(),
+          ...(!isEdit ? { payment_mode: root.querySelector("#f-payment-mode").value,
+            interest_months: root.querySelector("#f-interest-months").value } : {}),
         };
         try {
           if (isEdit) {
@@ -922,7 +945,7 @@ async function renderLoanDetail(id) {
           <button class="btn-primary btn-sm" id="register-payment-btn">+ Registrar pago</button>
           <button class="btn-secondary btn-sm" id="add-extension-btn" ${loan.extension ? 'disabled title="Ya existe una extensión. Elimínala antes de registrar otra."' : ""}>+ Agregar extensión</button>
           <button class="btn-danger btn-sm" id="delete-extension-btn" ${loan.extension ? "" : 'disabled title="Este préstamo no tiene extensión."'}>Eliminar extensión</button>
-          ${loan.term_months > 1 ? `<button class="btn-secondary btn-sm" id="payment-plan-btn">${loan.payment_plan ? "Ajustar plan" : "+ Plan interés → capital"}</button>` : ""}
+          <button class="btn-secondary btn-sm" id="payment-plan-btn">Plan de cobro</button>
           <button class="btn-secondary btn-sm" id="edit-loan-btn">Editar</button>
           <button class="btn-danger btn-sm" id="delete-loan-btn">Eliminar</button>
         </div>
@@ -1007,37 +1030,40 @@ function renderPaymentPlanSummary(loan) {
 }
 
 function openPaymentPlanModal(loan) {
-  openModal("Plan: interés antes del capital", `
+  openModal("Elegir forma de cobro", `
     <form id="plan-form">
-      <p class="muted">Define cuántos meses se usan para cobrar el interés total. El capital se reparte entre los meses restantes.</p>
-      <div class="field"><label>Meses para cobrar el interés *</label><input id="plan-months" type="number" min="1" max="${loan.term_months - 1}" step="1" value="${loan.payment_plan?.interest_months || Math.min(3, loan.term_months - 1)}" required /></div>
+      <div class="field"><label for="plan-mode">Forma de cobrar</label>
+        <select id="plan-mode"><option value="monthly" ${loan.payment_plan ? "" : "selected"}>Cuotas mensuales durante todo el plazo</option>
+          ${loan.term_months > 1 ? `<option value="interest_first" ${loan.payment_plan ? "selected" : ""}>Interés primero y después capital</option>` : ""}</select></div>
+      <div class="field" id="plan-months-field" hidden><label for="plan-months">Meses para cobrar el interés *</label><input id="plan-months" type="number" min="1" max="${Math.max(1, loan.term_months - 1)}" step="1" value="${loan.payment_plan?.interest_months || Math.min(2, loan.term_months - 1)}" /></div>
       <div id="plan-preview" class="extension-preview" aria-live="polite"></div>
       <div class="form-actions"><button id="cancel-btn" type="button" class="btn-secondary">Cancelar</button><button id="save-plan" type="submit" class="btn-primary">Guardar plan</button></div>
     </form>`, {
     onMount: root => {
       root.querySelector("#cancel-btn").onclick = closeModal;
       const monthsEl = root.querySelector("#plan-months");
+      const modeEl = root.querySelector("#plan-mode");
       const preview = () => {
+        const first = modeEl.value === "interest_first";
         const months = Number(monthsEl.value);
-        const valid = Number.isInteger(months) && months > 0 && months < loan.term_months;
+        root.querySelector("#plan-months-field").hidden = !first;
+        const valid = !first || Number.isInteger(months) && months > 0 && months < loan.term_months;
         root.querySelector("#save-plan").disabled = !valid;
         if (!valid) { root.querySelector("#plan-preview").textContent = "Elige menos meses que el plazo total."; return; }
-        const interestMonthly = loan.totalInterest / months;
-        const capitalMonthly = loan.principal / (loan.term_months - months);
-        root.querySelector("#plan-preview").innerHTML = `<strong>Vista previa</strong>
-          <div>Primero: ${formatMoney(loan.totalInterest)} de interés en ${months} meses (aprox. ${formatMoney(interestMonthly)} por mes).</div>
-          <div>Después: ${formatMoney(loan.principal)} de capital en ${loan.term_months - months} meses (aprox. ${formatMoney(capitalMonthly)} por mes).</div>
-          <div>Total: ${formatMoney(loan.totalToPay)} · ya cobrado: ${formatMoney(loan.totalPaid)} · saldo: ${formatMoney(loan.pendingBalance)}.</div>
-          <small>Los pagos existentes mantienen fecha y monto; sus importes se aplicarán al calendario nuevo. Revisa los meses antes de guardar.</small>`;
+        root.querySelector("#plan-preview").innerHTML = first ? `<strong>Vista previa</strong>
+          <div>Interés: ${formatMoney(loan.totalInterest)} en ${months} meses (aprox. ${formatMoney(loan.totalInterest / months)} al mes).</div>
+          <div>Capital: ${formatMoney(loan.principal)} en ${loan.term_months - months} meses (aprox. ${formatMoney(loan.principal / (loan.term_months - months))} al mes).</div>`
+          : `<strong>Vista previa</strong><div>${loan.term_months} cuotas mensuales (aprox. ${formatMoney(loan.totalToPay / loan.term_months)} al mes).</div>`;
       };
       monthsEl.addEventListener("input", preview);
+      modeEl.addEventListener("change", preview);
       preview();
       root.querySelector("#plan-form").addEventListener("submit", async event => {
         event.preventDefault();
         try {
-          await api(`/api/loans/${loan.id}/payment-plan`, { method: "POST", body: JSON.stringify({ interest_months: Number(monthsEl.value) }) });
+          await api(`/api/loans/${loan.id}/payment-plan`, { method: "POST", body: JSON.stringify({ payment_mode: modeEl.value, interest_months: Number(monthsEl.value) }) });
           closeModal();
-          showToast("Plan de interés y capital guardado", "success");
+          showToast("Forma de cobro actualizada", "success");
           renderLoanDetail(loan.id);
         } catch (err) { showToast(err.message); }
       });

@@ -351,6 +351,13 @@ app.post("/api/loans", async (c) => {
   const validated = validateLoanInput(body);
   if ("error" in validated) return c.json(validated, 400);
 
+  const mode = body.payment_mode ?? "monthly";
+  const interestMonths = Number(body.interest_months);
+  if (mode !== "monthly" && mode !== "interest_first") return c.json({ error: "Elige una modalidad de cobro válida" }, 400);
+  if (mode === "interest_first" && (!Number.isInteger(interestMonths) || interestMonths < 1 || interestMonths >= validated.termMonths)) {
+    return c.json({ error: "Los meses de interés deben ser entre 1 y el plazo menos 1" }, 400);
+  }
+  const plan = mode === "interest_first" ? { interest_months: interestMonths } : undefined;
   const id = crypto.randomUUID();
   const { error } = await supabase.from(LOANS_TABLE).insert({
     id,
@@ -359,7 +366,7 @@ app.post("/api/loans", async (c) => {
     interest_rate: validated.interestRate,
     term_months: validated.termMonths,
     start_date: validated.startDate,
-    notes: (body.notes as string) || null,
+    notes: plan ? encodeLoanNotes((body.notes as string) || null, undefined, plan) : (body.notes as string) || null,
   });
   if (error) return c.json({ error: error.message }, 500);
 
@@ -369,7 +376,8 @@ app.post("/api/loans", async (c) => {
     .eq("id", id)
     .maybeSingle();
 
-  return c.json({ ...(loan as LoanRecord), ...computeLoan(loan as LoanRecord, []) }, 201);
+  const decoded = decodeLoan(loan as LoanRecord);
+  return c.json({ ...decoded, ...computeLoan(decoded, []) }, 201);
 });
 
 app.get("/api/loans/:id", async (c) => {
@@ -409,25 +417,40 @@ app.put("/api/loans/:id", async (c) => {
   const validated = validateLoanInput(body);
   if ("error" in validated) return c.json(validated, 400);
   const currentLoan = decodeLoan(existing as LoanRecord);
-  if ((currentLoan.extension || currentLoan.payment_plan) && (
-    validated.principal !== Number(currentLoan.principal) ||
-    validated.interestRate !== Number(currentLoan.extension?.original_rate ?? currentLoan.interest_rate) ||
-    validated.termMonths !== Number(currentLoan.extension?.original_months ?? currentLoan.term_months) ||
-    validated.startDate !== currentLoan.start_date
-  )) return c.json({ error: "Después de definir el calendario solo puedes editar la nota. Las cuotas y pagos quedan protegidos." }, 400);
-
+  const payments = await fetchPaymentsForLoan(supabase, id);
+  if (currentLoan.payment_plan && currentLoan.payment_plan.interest_months >= validated.termMonths + (currentLoan.extension?.additional_months ?? 0)) {
+    return c.json({ error: "El plazo debe tener meses suficientes para cobrar intereses y capital." }, 400);
+  }
+  const extension = currentLoan.extension ? { ...currentLoan.extension } : undefined;
+  if (extension) {
+    extension.original_months = validated.termMonths;
+    extension.original_rate = validated.interestRate;
+    const originalInterest = round2(validated.principal * validated.interestRate / 100);
+    const paidAtAgreement = payments.filter(p => p.payment_date <= extension.agreement_date)
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    extension.base_amount = extension.calculation_base === "original"
+      ? validated.principal
+      : round2(Math.max(0, validated.principal - Math.max(0, paidAtAgreement - originalInterest)));
+    extension.additional_interest = round2(extension.base_amount * extension.additional_rate / 100);
+  }
+  const notes = extension || currentLoan.payment_plan
+    ? encodeLoanNotes((body.notes as string) || null, extension, currentLoan.payment_plan)
+    : (body.notes as string) || null;
+  const candidate = decodeLoan({ ...existing, principal: validated.principal,
+    interest_rate: validated.interestRate, term_months: validated.termMonths,
+    start_date: validated.startDate, notes } as LoanRecord);
+  const candidateSchedule = installments(candidate, payments);
+  if (candidateSchedule.unallocated > 0.001) {
+    return c.json({ error: "Los pagos registrados no caben en el nuevo calendario. Revisa el monto, el interés y el plazo." }, 400);
+  }
   const { error } = await supabase
     .from(LOANS_TABLE)
     .update({
-      ...((currentLoan.extension || currentLoan.payment_plan) ? {} : {
-        principal: validated.principal,
-        interest_rate: validated.interestRate,
-        term_months: validated.termMonths,
-        start_date: validated.startDate,
-      }),
-      notes: (currentLoan.extension || currentLoan.payment_plan)
-        ? encodeLoanNotes((body.notes as string) || null, currentLoan.extension, currentLoan.payment_plan)
-        : (body.notes as string) || null,
+      principal: validated.principal,
+      interest_rate: validated.interestRate,
+      term_months: validated.termMonths,
+      start_date: validated.startDate,
+      notes,
     })
     .eq("id", id);
   if (error) return c.json({ error: error.message }, 500);
@@ -437,7 +460,6 @@ app.put("/api/loans/:id", async (c) => {
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  const payments = await fetchPaymentsForLoan(supabase, id);
   const decoded = decodeLoan(loan as LoanRecord);
   return c.json({ ...decoded, payments, ...computeLoan(decoded, payments) });
 });
@@ -545,21 +567,24 @@ app.post("/api/loans/:id/payment-plan", async (c) => {
   if (!rawLoan) return c.json({ error: "Préstamo no encontrado" }, 404);
   const loan = decodeLoan(rawLoan as LoanRecord);
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const mode = body.payment_mode ?? "interest_first";
   const interestMonths = Number(body.interest_months);
-  if (!Number.isInteger(interestMonths) || interestMonths < 1 || interestMonths >= loan.term_months) {
+  if (mode !== "monthly" && mode !== "interest_first") return c.json({ error: "Elige una modalidad de cobro válida" }, 400);
+  if (mode === "interest_first" && (!Number.isInteger(interestMonths) || interestMonths < 1 || interestMonths >= loan.term_months)) {
     return c.json({ error: "Los meses de interés deben ser menores que el plazo total" }, 400);
   }
-  const plan = { interest_months: interestMonths };
-  const candidate = decodeLoan({ ...rawLoan, notes: encodeLoanNotes(loan.notes, loan.extension, plan) } as LoanRecord);
+  const plan = mode === "interest_first" ? { interest_months: interestMonths } : undefined;
+  const notes = loan.extension || plan ? encodeLoanNotes(loan.notes, loan.extension, plan) : loan.notes;
+  const candidate = decodeLoan({ ...rawLoan, notes } as LoanRecord);
   const payments = await fetchPaymentsForLoan(supabase, id);
   const schedule = installments(candidate, payments);
   if (schedule.unallocated > 0.001) return c.json({ error: "Hay pagos que exceden el plan; revisa los meses aplicados antes de guardarlo" }, 400);
   const firstCapital = schedule.schedule.find(row => row.principal_amount > 0)?.number ?? loan.term_months + 1;
-  if (payments.some(p => p.installment_number && p.installment_number >= firstCapital) &&
+  if (plan && payments.some(p => p.installment_number && p.installment_number >= firstCapital) &&
       schedule.schedule.slice(0, interestMonths).some(row => row.remaining > 0.001)) {
     return c.json({ error: "Hay pagos ya asignados a meses de capital mientras el interés está pendiente. Corrige esos meses antes de aplicar el plan." }, 400);
   }
-  let updateQuery = supabase.from(LOANS_TABLE).update({ notes: encodeLoanNotes(loan.notes, loan.extension, plan) }).eq("id", id);
+  let updateQuery = supabase.from(LOANS_TABLE).update({ notes }).eq("id", id);
   updateQuery = rawLoan.notes === null ? updateQuery.is("notes", null) : updateQuery.eq("notes", rawLoan.notes);
   const { data: updated, error } = await updateQuery.select("id");
   if (error) return c.json({ error: error.message }, 500);
