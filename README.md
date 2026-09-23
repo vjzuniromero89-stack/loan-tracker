@@ -157,3 +157,13 @@ El enlace del cliente muestra para cada préstamo el calendario de cuotas con es
 Si la tabla de pagos todavía no tiene `installment_number`, el servidor detecta exclusivamente ese error y guarda el mes seleccionado junto con el pago en un formato interno dentro de `notes`. Al consultar el préstamo, el historial y el portal, recupera el número de cuota y muestra únicamente la nota que escribiste. Si después ejecutas la migración SQL, los pagos anteriores siguen leyéndose correctamente y los nuevos usarán la columna. Para este ZIP, la migración deja de ser obligatoria para registrar pagos.
 
 Ejemplo: cuota de agosto $900, pago de $1,400 aplicado desde agosto → agosto queda pagado y $500 se abonan a septiembre. El calendario, el saldo y el portal se recalculan a partir del mismo registro.
+
+## Prórrogas de préstamos
+
+En la ficha del préstamo, **Prorrogar préstamo** permite registrar el plazo e interés del acuerdo original, los meses e interés adicionales, la base del nuevo interés (capital original o capital pendiente) y la fecha del acuerdo. Se muestra una vista previa antes de guardar. No se entrega capital adicional: el préstamo conserva su principal y todos los pagos existentes. El portal de solo lectura también muestra las dos etapas.
+
+Ejemplo: $5,000 del 15 de julio de 2026 al 40% por cinco meses ($2,000 de interés), más cinco meses al 40% sobre los mismos $5,000 ($2,000 extra): total $9,000. Las cuotas originales de agosto a diciembre son $1,400 cada una y las cinco cuotas adicionales de enero a mayo son $400 cada una. Si ya se cobró $1,400, el saldo total nuevo es $7,600; el pago conserva el mes al que se aplicó. La app no convierte retroactivamente las diez cuotas en $900, porque eso cambiaría lo pactado para los primeros cinco meses.
+
+Si el préstamo ya estaba registrado como **80% / 10 meses**, al abrir la prórroga se proponen **40% / 5 meses** originales y **40% / 5 meses** adicionales. Revisa la vista previa antes de guardar. Si eliges el capital pendiente, el interés adicional se calcula una sola vez al momento del acuerdo, siguiendo la regla actual de la app que aplica los pagos primero al interés original y luego al capital.
+
+Se permite una prórroga por préstamo en esta versión. Después de registrarla, las condiciones y fechas quedan protegidas; la nota puede seguir editándose. La prórroga se guarda con la nota del préstamo en un formato interno compatible con la base actual, así que no requiere otra migración. El cliente ve la nota normal, nunca el formato interno.

@@ -12,12 +12,20 @@ export function installments(loan: LoanRecord, payments: PaymentRecord[]) {
   const total = cents(Number(loan.principal) * (1 + Number(loan.interest_rate) / 100));
   const n = Number(loan.term_months);
   if (!Number.isInteger(n) || n < 1) return { schedule: [], allocations: [], unallocated: 0 };
-  const base = Math.floor(total / n);
-  const schedule = Array.from({ length: n }, (_, i) => ({
-    number: i + 1, due_date: dueDate(loan.start_date, i + 1),
-    amount: (i === n - 1 ? total - base * (n - 1) : base) / 100,
-    paid: 0, remaining: (i === n - 1 ? total - base * (n - 1) : base) / 100,
-  }));
+  const firstMonths = loan.extension?.original_months ?? n;
+  const firstTotal = loan.extension
+    ? cents(Number(loan.principal) * (1 + loan.extension.original_rate / 100)) : total;
+  const secondTotal = loan.extension ? cents(loan.extension.additional_interest) : 0;
+  const schedule = Array.from({ length: n }, (_, i) => {
+    const inFirst = i < firstMonths;
+    const groupMonths = inFirst ? firstMonths : n - firstMonths;
+    const groupTotal = inFirst ? firstTotal : secondTotal;
+    const groupIndex = inFirst ? i : i - firstMonths;
+    const base = Math.floor(groupTotal / groupMonths);
+    const amount = (groupIndex === groupMonths - 1 ? groupTotal - base * (groupMonths - 1) : base) / 100;
+    return { number: i + 1, due_date: dueDate(loan.start_date, i + 1),
+      amount, paid: 0, remaining: amount };
+  });
   const allocations: { payment_id: string; number: number; due_date: string; amount: number }[] = [];
   let unallocated = 0;
   for (const payment of payments.slice().sort((a, b) => a.payment_date.localeCompare(b.payment_date) || (a.created_at || '').localeCompare(b.created_at || '') || a.id.localeCompare(b.id))) {

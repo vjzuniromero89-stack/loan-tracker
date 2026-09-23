@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { decodeLoan, encodeLoanNotes, type LoanExtension } from "./loanExtension";
 import { encodePaymentNotes, missingInstallmentColumn } from "./paymentMetadata";
 import { installments } from "./installments";
 import { computeLoan, type LoanRecord } from "./loanCalc";
@@ -187,7 +188,8 @@ app.get("/api/clients/:id", async (c) => {
   const loansComputed = await Promise.all(
     ((loans as unknown as LoanRecord[]) || []).map(async (loan) => {
       const payments = await fetchPaymentsForLoan(supabase, loan.id);
-      return { ...loan, ...computeLoan(loan, payments), paymentsList: payments };
+      const decoded = decodeLoan(loan);
+      return { ...decoded, ...computeLoan(decoded, payments), paymentsList: payments };
     })
   );
 
@@ -225,7 +227,8 @@ app.get("/api/portal/:clientId/:token", async (c) => {
   const loansComputed = await Promise.all(
     ((loans as unknown as LoanRecord[]) || []).map(async (loan) => {
       const payments = await fetchPaymentsForLoan(supabase, loan.id);
-      return { ...loan, ...computeLoan(loan, payments), ...installments(loan, payments), paymentsList: payments };
+      const decoded = decodeLoan(loan);
+      return { ...decoded, ...computeLoan(decoded, payments), ...installments(decoded, payments), paymentsList: payments };
     })
   );
 
@@ -379,7 +382,8 @@ app.get("/api/loans/:id", async (c) => {
     .maybeSingle<any>();
   if (!loanRow) return c.json({ error: "Préstamo no encontrado" }, 404);
 
-  const { client, ...loan } = loanRow;
+  const { client, ...rawLoan } = loanRow;
+  const loan = decodeLoan(rawLoan as LoanRecord);
   const loanWithClient = {
     ...loan,
     client_name: client?.name ?? "",
@@ -396,7 +400,7 @@ app.put("/api/loans/:id", async (c) => {
   const id = c.req.param("id");
   const { data: existing } = await supabase
     .from(LOANS_TABLE)
-    .select("id")
+    .select("*")
     .eq("id", id)
     .maybeSingle();
   if (!existing) return c.json({ error: "Préstamo no encontrado" }, 404);
@@ -404,15 +408,26 @@ app.put("/api/loans/:id", async (c) => {
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
   const validated = validateLoanInput(body);
   if ("error" in validated) return c.json(validated, 400);
+  const currentLoan = decodeLoan(existing as LoanRecord);
+  if (currentLoan.extension && (
+    validated.principal !== Number(currentLoan.principal) ||
+    validated.interestRate !== Number(currentLoan.interest_rate) ||
+    validated.termMonths !== Number(currentLoan.term_months) ||
+    validated.startDate !== currentLoan.start_date
+  )) return c.json({ error: "Después de una prórroga solo puedes editar la nota. Las cuotas y pagos quedan protegidos." }, 400);
 
   const { error } = await supabase
     .from(LOANS_TABLE)
     .update({
-      principal: validated.principal,
-      interest_rate: validated.interestRate,
-      term_months: validated.termMonths,
-      start_date: validated.startDate,
-      notes: (body.notes as string) || null,
+      ...(currentLoan.extension ? {} : {
+        principal: validated.principal,
+        interest_rate: validated.interestRate,
+        term_months: validated.termMonths,
+        start_date: validated.startDate,
+      }),
+      notes: currentLoan.extension
+        ? encodeLoanNotes((body.notes as string) || null, currentLoan.extension)
+        : (body.notes as string) || null,
     })
     .eq("id", id);
   if (error) return c.json({ error: error.message }, 500);
@@ -423,7 +438,60 @@ app.put("/api/loans/:id", async (c) => {
     .eq("id", id)
     .maybeSingle();
   const payments = await fetchPaymentsForLoan(supabase, id);
-  return c.json({ ...(loan as LoanRecord), payments, ...computeLoan(loan as LoanRecord, payments) });
+  const decoded = decodeLoan(loan as LoanRecord);
+  return c.json({ ...decoded, payments, ...computeLoan(decoded, payments) });
+});
+
+app.post("/api/loans/:id/extension", async (c) => {
+  const supabase = getSupabase(c.env);
+  const id = c.req.param("id");
+  const { data: rawLoan, error: readError } = await supabase.from(LOANS_TABLE)
+    .select("*").eq("id", id).maybeSingle();
+  if (readError) return c.json({ error: readError.message }, 500);
+  if (!rawLoan) return c.json({ error: "Préstamo no encontrado" }, 404);
+  const loan = decodeLoan(rawLoan as LoanRecord);
+  if (loan.extension) return c.json({ error: "Este préstamo ya tiene una prórroga registrada" }, 400);
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const originalMonths = Number(body.original_months);
+  const additionalMonths = Number(body.additional_months);
+  const originalRate = Number(body.original_rate);
+  const additionalRate = Number(body.additional_rate);
+  const base = body.calculation_base;
+  const agreementDate = typeof body.agreement_date === "string" ? body.agreement_date : "";
+  if (!Number.isInteger(originalMonths) || originalMonths < 1 || originalMonths > 120 ||
+      !Number.isInteger(additionalMonths) || additionalMonths < 1 || additionalMonths > 120 ||
+      !Number.isFinite(originalRate) || originalRate < 0 || originalRate > 1000 ||
+      !Number.isFinite(additionalRate) || additionalRate < 0 || additionalRate > 1000 ||
+      (base !== "original" && base !== "remaining") ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(agreementDate) ||
+      Number.isNaN(Date.parse(agreementDate + "T00:00:00Z"))) {
+    return c.json({ error: "Revisa los meses, porcentajes, base y fecha de la prórroga" }, 400);
+  }
+  const payments = await fetchPaymentsForLoan(supabase, id);
+  const paid = round2(payments.reduce((sum, p) => sum + Number(p.amount), 0));
+  const originalInterest = round2(Number(loan.principal) * originalRate / 100);
+  const recoveredPrincipal = Math.max(0, paid - originalInterest);
+  const baseAmount = base === "original" ? Number(loan.principal) : round2(Math.max(0, Number(loan.principal) - recoveredPrincipal));
+  const extraInterest = round2(baseAmount * additionalRate / 100);
+  const extension: LoanExtension = {
+    original_months: originalMonths, original_rate: originalRate,
+    additional_months: additionalMonths, additional_rate: additionalRate,
+    calculation_base: base, base_amount: baseAmount,
+    additional_interest: extraInterest, agreement_date: agreementDate,
+  };
+  const candidate = decodeLoan({ ...rawLoan, notes: encodeLoanNotes(loan.notes, extension) } as LoanRecord);
+  const candidateTotal = round2(Number(loan.principal) + originalInterest + extraInterest);
+  if (paid > candidateTotal + 0.001) return c.json({ error: "Los pagos existentes superan el total calculado. Revisa los porcentajes." }, 400);
+  const candidateSchedule = installments(candidate, payments);
+  if (candidateSchedule.unallocated > 0.001) return c.json({ error: "Hay pagos asignados fuera del nuevo plazo. Revisa el plazo original y la prórroga." }, 400);
+  let updateQuery = supabase.from(LOANS_TABLE).update({
+    notes: encodeLoanNotes(loan.notes, extension),
+  }).eq("id", id);
+  updateQuery = rawLoan.notes === null ? updateQuery.is("notes", null) : updateQuery.eq("notes", rawLoan.notes);
+  const { data: updated, error } = await updateQuery.select("id");
+  if (error) return c.json({ error: error.message }, 500);
+  if (!updated?.length) return c.json({ error: "El préstamo cambió mientras registrabas la prórroga. Recarga la ficha y revisa los datos." }, 409);
+  return c.json({ ...candidate, payments, ...computeLoan(candidate, payments), ...candidateSchedule }, 201);
 });
 
 app.delete("/api/loans/:id", async (c) => {
@@ -461,6 +529,7 @@ app.post("/api/loans/:id/payments", async (c) => {
     .eq("id", loanId)
     .maybeSingle();
   if (!loan) return c.json({ error: "Préstamo no encontrado" }, 404);
+  const currentLoan = decodeLoan(loan as LoanRecord);
 
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
   const amount = Number(body.amount);
@@ -473,9 +542,9 @@ app.post("/api/loans/:id/payments", async (c) => {
       : new Date().toISOString().slice(0, 10);
 
   const existing = await fetchPaymentsForLoan(supabase, loanId);
-  const allocation = installments(loan as LoanRecord, existing);
+  const allocation = installments(currentLoan, existing);
   const installmentNumber = Number(body.installment_number);
-  if (!Number.isInteger(installmentNumber) || installmentNumber < 1 || installmentNumber > Number(loan.term_months)) {
+  if (!Number.isInteger(installmentNumber) || installmentNumber < 1 || installmentNumber > Number(currentLoan.term_months)) {
     return c.json({ error: "Selecciona una cuota válida del plazo" }, 400);
   }
   const available = allocation.schedule.slice(installmentNumber - 1).reduce((sum, r) => sum + r.remaining, 0);
@@ -506,7 +575,7 @@ app.post("/api/loans/:id/payments", async (c) => {
   if (error) return c.json({ error: error.message }, 500);
 
   const payments = await fetchPaymentsForLoan(supabase, loanId);
-  const computed = computeLoan(loan as unknown as LoanRecord, payments);
+  const computed = computeLoan(currentLoan, payments);
   return c.json(
     { payment: { id, loan_id: loanId, amount, payment_date: paymentDate, installment_number: installmentNumber }, payments, ...computed },
     201
@@ -532,7 +601,7 @@ app.delete("/api/payments/:id", async (c) => {
     .maybeSingle();
   const payments = await fetchPaymentsForLoan(supabase, payment.loan_id);
   const computed = loan
-    ? computeLoan(loan as unknown as LoanRecord, payments)
+    ? computeLoan(decodeLoan(loan as LoanRecord), payments)
     : null;
 
   return c.json({ ok: true, payments, ...computed });

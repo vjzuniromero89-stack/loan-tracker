@@ -1,6 +1,7 @@
 // Helpers de acceso a datos (Supabase/Postgres) compartidos entre rutas.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LoanRecord, PaymentRecord } from "./loanCalc";
+import { decodeLoan } from "./loanExtension";
 import { decodePayment } from "./paymentMetadata";
 import { CLIENTS_TABLE, LOANS_TABLE, PAYMENTS_TABLE } from "./supabase";
 
@@ -29,11 +30,11 @@ export async function fetchAllLoansJoined(
   if (error) throw new Error(error.message);
   return (data || []).map((row: any) => {
     const { client, ...loan } = row;
-    return {
+    return decodeLoan({
       ...loan,
       client_name: client?.name ?? "",
       client_phone: client?.phone ?? null,
-    } as LoanJoined;
+    } as LoanJoined);
   });
 }
 

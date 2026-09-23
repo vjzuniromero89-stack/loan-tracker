@@ -914,3 +914,8 @@ td.wrap, th.wrap { white-space: normal; }
 .portal-loan-note { margin-top: 18px; border-left: 4px solid var(--primary); border-radius: 8px; padding: 12px 16px; background: var(--surface-alt); white-space: pre-wrap; overflow-wrap: anywhere; }
 .portal-loan-note strong { display: block; margin-bottom: 5px; font-size: 0.8rem; }
 .portal-loan-note p { margin: 0; color: var(--text-muted); }
+
+.extension-summary, .extension-preview { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 10px; background: var(--surface-alt); line-height: 1.55; }
+.extension-summary strong, .extension-preview strong { color: var(--primary-dark); }
+.extension-preview div { margin-top: 7px; }
+.extension-preview small { display: block; margin-top: 9px; color: var(--text-muted); }

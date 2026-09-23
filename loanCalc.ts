@@ -5,7 +5,10 @@
 //   total a pagar = 7000
 //   cuota mensual = 7000 / 5 = 1400 (capital + interes en partes iguales cada mes)
 
+import type { LoanExtension } from "./loanExtension";
+
 export interface LoanRecord {
+  extension?: LoanExtension;
   id: string;
   client_id: string;
   principal: number;
@@ -64,9 +67,13 @@ export function computeLoan(
   payments: PaymentRecord[],
   asOf: Date = new Date()
 ): LoanComputed {
-  const totalInterest = round2(loan.principal * (loan.interest_rate / 100));
+  const totalInterest = loan.extension
+    ? round2(loan.principal * (loan.extension.original_rate / 100) + loan.extension.additional_interest)
+    : round2(loan.principal * (loan.interest_rate / 100));
   const totalToPay = round2(loan.principal + totalInterest);
-  const monthlyPayment = loan.term_months > 0 ? round2(totalToPay / loan.term_months) : 0;
+  const monthlyPayment = loan.extension
+    ? round2((loan.principal * (1 + loan.extension.original_rate / 100)) / loan.extension.original_months)
+    : loan.term_months > 0 ? round2(totalToPay / loan.term_months) : 0;
   const allocation = installments(loan, payments);
   const totalPaid = round2(payments.reduce((sum, p) => sum + Number(p.amount), 0));
   const pendingBalance = round2(Math.max(totalToPay - totalPaid, 0));
