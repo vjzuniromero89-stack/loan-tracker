@@ -13,7 +13,6 @@ export interface LoanExtension {
 export interface LoanPaymentPlan { interest_months: number }
 
 const PREFIX = '__LOAN_TRACKER_EXTENSION_V1__';
-const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 export function encodeLoanNotes(notes: string | null, extension?: LoanExtension, paymentPlan?: LoanPaymentPlan): string {
   return PREFIX + JSON.stringify({ notes, extension: extension || null, payment_plan: paymentPlan || null });
@@ -38,8 +37,7 @@ export function decodeLoan<T extends LoanRecord>(row: T): T & { extension?: Loan
     if (!e && !p) return row;
     return {
       ...row, notes: payload.notes,
-      ...(e ? { extension: e, term_months: n,
-        interest_rate: round2(e.original_rate + e.additional_interest / Number(row.principal) * 100) } : {}),
+      ...(e ? { extension: e, term_months: n, interest_rate: e.original_rate } : {}),
       ...(p ? { payment_plan: p } : {}),
     };
   } catch { return row; }

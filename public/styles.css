@@ -942,3 +942,7 @@ td.wrap, th.wrap { white-space: normal; }
 .extension-details p { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-alt); }
 
 .actions button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+
+.loan-section-label { color: var(--primary-dark); font-size: 0.85rem; font-weight: 700; margin: 4px 0 14px; }
+.extension-terms-panel { border-left: 4px solid #be812e; }
+.combined-loan-panel { border-left: 4px solid var(--primary); }

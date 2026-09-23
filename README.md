@@ -183,3 +183,13 @@ La ficha del préstamo muestra **+ Agregar extensión** y **Eliminar extensión*
 ### Acción opcional para extender
 
 El préstamo conserva sus condiciones originales hasta que el cliente solicite más tiempo. Entonces el dueño pulsa **+ Agregar extensión**, revisa los meses y el interés adicional, y guarda el acuerdo. Si necesita volver al acuerdo original, pulsa **Eliminar extensión** y confirma. Si hay pagos atribuidos a meses adicionales o superiores al total original, el servidor explica el problema y conserva la extensión hasta resolverlo. Esta acción no se ejecuta automáticamente al crear un préstamo ni al configurar el plan de interés y capital.
+
+### Presentación separada del préstamo y la extensión
+
+En el detalle del dueño y en el portal del cliente se muestran tres cuadros distintos:
+
+1. **Préstamo original**: principal, interés y plazo pactados inicialmente; por ejemplo $5,000 al 40% durante cinco meses, interés $2,000 y total inicial $7,000.
+2. **Extensión del préstamo**: fecha del acuerdo, cinco meses agregados, tasa adicional del 40%, base utilizada y $2,000 de interés nuevo. No se muestra como un desembolso de otros $5,000.
+3. **Resumen total**: interés original más interés adicional ($4,000), total a pagar ($9,000), cobros realizados, saldo y estado. El calendario de cuotas sigue usando los diez meses del acuerdo completo.
+
+La tasa visible del acuerdo original sigue siendo 40%; la extensión conserva su propio 40%. Las listas de clientes y préstamos identifican ambos porcentajes por separado. Los formularios de edición del préstamo con extensión muestran y protegen los meses y la tasa originales.

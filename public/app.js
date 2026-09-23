@@ -517,8 +517,8 @@ async function renderClientDetail(id) {
         <tr data-id="${l.id}">
           <td>${formatDate(l.start_date)}</td>
           <td>${formatMoney(l.principal)}</td>
-          <td>${l.interest_rate}%</td>
-          <td>${l.term_months} m</td>
+          <td>${l.extension ? `<strong>${l.extension.original_rate}% inicial</strong><br><small>${l.extension.additional_rate}% extensión</small>` : `${l.interest_rate}%`}</td>
+          <td>${l.extension ? `<strong>${l.extension.original_months} m inicial</strong><br><small>${l.extension.additional_months} m extensión</small>` : `${l.term_months} m`}</td>
           <td>${formatMoney(l.monthlyPayment)}</td>
           <td>${l.percentPaid}%</td>
           <td>${formatMoney(l.pendingBalance)}</td>
@@ -703,27 +703,20 @@ async function renderPortalClient(clientId, token) {
         return `
           <div class="panel">
             <div class="panel-header">
-              <h2>Préstamo del ${formatDate(l.start_date)} ${statusBadge(l.status)}</h2>
+              <h2>Préstamo original del ${formatDate(l.start_date)} ${statusBadge(l.status)}</h2>
             </div>
-            <div class="detail-grid">
-              <div class="detail-item"><div class="detail-label">Monto prestado</div><div class="detail-value v-primary">${formatMoney(l.principal)}</div></div>
-              <div class="detail-item"><div class="detail-label">Interés total</div><div class="detail-value">${l.interest_rate}%</div></div>
-              <div class="detail-item"><div class="detail-label">Plazo</div><div class="detail-value">${l.term_months} meses</div></div>
-              <div class="detail-item"><div class="detail-label">Total a pagar</div><div class="detail-value v-primary">${formatMoney(l.totalToPay)}</div></div>
-              <div class="detail-item"><div class="detail-label">${l.payment_plan ? "Cuota de interés" : l.extension ? "Cuota original" : "Cuota mensual"}</div><div class="detail-value v-primary">${formatMoney(l.monthlyPayment)}</div></div>
-              <div class="detail-item"><div class="detail-label">Total pagado</div><div class="detail-value v-success">${formatMoney(l.totalPaid)}</div></div>
-              <div class="detail-item"><div class="detail-label">Saldo pendiente</div><div class="detail-value ${l.pendingBalance > 0 ? "v-danger" : "v-success"}">${formatMoney(l.pendingBalance)}</div></div>
-              <div class="detail-item"><div class="detail-label">Próximo vencimiento</div><div class="detail-value">${l.nextDueDate ? formatDate(l.nextDueDate) : "-"}</div></div>
-            </div>
-            <div style="margin-top:16px;">
+            ${l.extension ? `<p class="loan-section-label">Condiciones del préstamo inicial</p>` : ""}
+            ${renderOriginalTerms(l)}
+            ${l.extension ? "" : `<div style="margin-top:16px;">
               <div class="detail-label" style="margin-bottom:6px;">Progreso: ${l.percentPaid}%</div>
               <div class="progress-track"><div class="progress-fill ${l.status === "pagado" ? "is-complete" : ""}" style="width:${Math.min(l.percentPaid, 100)}%"></div></div>
             </div>
-            ${overdueNote}
-            ${renderExtensionSummary(l)}
-            ${renderPaymentPlanSummary(l)}
+            ${overdueNote}`}
+            ${l.extension ? "" : renderPaymentPlanSummary(l)}
             ${l.notes ? `<div class="portal-loan-note"><strong>Nota del préstamo</strong><p>${escapeHtml(l.notes)}</p></div>` : ""}
           </div>
+          ${renderExtensionSummary(l)}
+          ${renderOverallPanel(l)}
           ${renderInstallmentCalendar(l)}
           <div class="panel">
             <div class="panel-header"><h2>Historial de pagos</h2></div>
@@ -765,11 +758,11 @@ function loanFormHtml(loan, clients, preselectedClient) {
       </div>
       <div class="field">
         <label>Interés total del préstamo (%) *</label>
-        <input type="number" id="f-rate" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="0" step="0.01" value="${loan ? loan.interest_rate : ""}" required />
+        <input type="number" id="f-rate" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="0" step="0.01" value="${loan ? (loan.extension?.original_rate ?? loan.interest_rate) : ""}" required />
       </div>
       <div class="field">
         <label>Plazo (meses) *</label>
-        <input type="number" id="f-term" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="1" step="1" value="${loan ? loan.term_months : ""}" required />
+        <input type="number" id="f-term" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="1" step="1" value="${loan ? (loan.extension?.original_months ?? loan.term_months) : ""}" required />
       </div>
       <div class="field">
         <label>Fecha de inicio *</label>
@@ -831,8 +824,8 @@ function loanRowHtml(l) {
     <tr data-id="${l.id}">
       <td>${escapeHtml(l.client_name)}</td>
       <td>${formatMoney(l.principal)}</td>
-      <td>${l.interest_rate}%</td>
-      <td>${l.term_months} m</td>
+      <td>${l.extension ? `<strong>${l.extension.original_rate}% inicial</strong><br><small>${l.extension.additional_rate}% extensión</small>` : `${l.interest_rate}%`}</td>
+      <td>${l.extension ? `<strong>${l.extension.original_months} m inicial</strong><br><small>${l.extension.additional_months} m extensión</small>` : `${l.term_months} m`}</td>
       <td>${formatMoney(l.monthlyPayment)}</td>
       <td>${l.percentPaid}%</td>
       <td>${formatMoney(l.pendingBalance)}</td>
@@ -935,28 +928,19 @@ async function renderLoanDetail(id) {
         </div>
       </div>
 
-      <div class="detail-grid">
-        <div class="detail-item"><div class="detail-label">Monto prestado</div><div class="detail-value v-primary">${formatMoney(loan.principal)}</div></div>
-        <div class="detail-item"><div class="detail-label">Interés total</div><div class="detail-value">${loan.interest_rate}%</div></div>
-        <div class="detail-item"><div class="detail-label">Plazo</div><div class="detail-value">${loan.term_months} meses</div></div>
-        <div class="detail-item"><div class="detail-label">Inicio</div><div class="detail-value">${formatDate(loan.start_date)}</div></div>
-        <div class="detail-item"><div class="detail-label">Ganancia (interés)</div><div class="detail-value v-profit">${formatMoney(loan.totalInterest)}</div></div>
-        <div class="detail-item"><div class="detail-label">Total a pagar</div><div class="detail-value v-primary">${formatMoney(loan.totalToPay)}</div></div>
-        <div class="detail-item"><div class="detail-label">${loan.payment_plan ? "Cuota de interés" : loan.extension ? "Cuota original" : "Cuota mensual"}</div><div class="detail-value v-primary">${formatMoney(loan.monthlyPayment)}</div></div>
-        <div class="detail-item"><div class="detail-label">Total pagado</div><div class="detail-value v-success">${formatMoney(loan.totalPaid)}</div></div>
-        <div class="detail-item"><div class="detail-label">Saldo pendiente</div><div class="detail-value ${loan.pendingBalance > 0 ? "v-danger" : "v-success"}">${formatMoney(loan.pendingBalance)}</div></div>
-        <div class="detail-item"><div class="detail-label">Próximo vencimiento</div><div class="detail-value">${loan.nextDueDate ? formatDate(loan.nextDueDate) : "-"}</div></div>
-      </div>
+      ${loan.extension ? `<p class="loan-section-label">Condiciones del préstamo inicial</p>` : ""}
+      ${renderOriginalTerms(loan, true)}
 
-      <div style="margin-top:16px;">
+      ${loan.extension ? "" : `<div style="margin-top:16px;">
         <div class="detail-label" style="margin-bottom:6px;">Progreso: ${loan.percentPaid}%</div>
         <div class="progress-track"><div class="progress-fill ${loan.status === "pagado" ? "is-complete" : ""}" style="width:${Math.min(loan.percentPaid, 100)}%"></div></div>
       </div>
-      ${overdueNote}
+      ${overdueNote}`}
       ${loan.notes ? `<p class="muted" style="margin-top:14px;">${escapeHtml(loan.notes)}</p>` : ""}
-      ${renderExtensionSummary(loan)}
-      ${renderPaymentPlanSummary(loan)}
+      ${loan.extension ? "" : renderPaymentPlanSummary(loan)}
     </div>
+    ${renderExtensionSummary(loan)}
+    ${renderOverallPanel(loan)}
 
     <div class="panel accent-primary">
       <div class="panel-header">
@@ -1069,16 +1053,61 @@ function confirmDeleteExtension(loan, onSuccess) {
   }, "Eliminar extensión");
 }
 
+function initialInterest(loan) {
+  return Math.round(Number(loan.principal) * Number(loan.extension?.original_rate ?? loan.interest_rate)) / 100;
+}
+
+function renderOriginalTerms(loan, includeStart = false) {
+  const months = loan.extension?.original_months ?? loan.term_months;
+  const firstTotal = Number(loan.principal) + initialInterest(loan);
+  return `<div class="detail-grid">
+    <div class="detail-item"><div class="detail-label">Monto prestado</div><div class="detail-value v-primary">${formatMoney(loan.principal)}</div></div>
+    <div class="detail-item"><div class="detail-label">Interés original</div><div class="detail-value">${loan.extension?.original_rate ?? loan.interest_rate}%</div></div>
+    <div class="detail-item"><div class="detail-label">Plazo original</div><div class="detail-value">${months} meses</div></div>
+    ${includeStart ? `<div class="detail-item"><div class="detail-label">Inicio</div><div class="detail-value">${formatDate(loan.start_date)}</div></div>` : ""}
+    <div class="detail-item"><div class="detail-label">Interés del préstamo inicial</div><div class="detail-value v-profit">${formatMoney(initialInterest(loan))}</div></div>
+    <div class="detail-item"><div class="detail-label">Total del préstamo inicial</div><div class="detail-value v-primary">${formatMoney(firstTotal)}</div></div>
+    <div class="detail-item"><div class="detail-label">${loan.extension ? "Cuota pactada inicialmente" : loan.payment_plan ? "Cuota de interés" : "Cuota mensual"}</div><div class="detail-value v-primary">${formatMoney(loan.extension ? firstTotal / months : loan.monthlyPayment)}</div></div>
+    ${loan.extension ? "" : `
+      <div class="detail-item"><div class="detail-label">Total pagado</div><div class="detail-value v-success">${formatMoney(loan.totalPaid)}</div></div>
+      <div class="detail-item"><div class="detail-label">Saldo pendiente</div><div class="detail-value ${loan.pendingBalance > 0 ? "v-danger" : "v-success"}">${formatMoney(loan.pendingBalance)}</div></div>
+      <div class="detail-item"><div class="detail-label">Próximo vencimiento</div><div class="detail-value">${loan.nextDueDate ? formatDate(loan.nextDueDate) : "-"}</div></div>`}
+  </div>`;
+}
+
+function renderOverallPanel(loan) {
+  if (!loan.extension) return "";
+  return `<div class="panel combined-loan-panel">
+    <div class="panel-header"><h2>Resumen total · préstamo + extensión</h2>${statusBadge(loan.status)}</div>
+    <div class="detail-grid">
+      <div class="detail-item"><div class="detail-label">Interés original + adicional</div><div class="detail-value v-profit">${formatMoney(loan.totalInterest)}</div></div>
+      <div class="detail-item"><div class="detail-label">Total a pagar</div><div class="detail-value v-primary">${formatMoney(loan.totalToPay)}</div></div>
+      <div class="detail-item"><div class="detail-label">Plazo total</div><div class="detail-value">${loan.term_months} meses</div></div>
+      <div class="detail-item"><div class="detail-label">Total pagado</div><div class="detail-value v-success">${formatMoney(loan.totalPaid)}</div></div>
+      <div class="detail-item"><div class="detail-label">Saldo pendiente</div><div class="detail-value ${loan.pendingBalance > 0 ? "v-danger" : "v-success"}">${formatMoney(loan.pendingBalance)}</div></div>
+      <div class="detail-item"><div class="detail-label">Próximo vencimiento</div><div class="detail-value">${loan.nextDueDate ? formatDate(loan.nextDueDate) : "-"}</div></div>
+    </div>
+    <div style="margin-top:16px;"><div class="detail-label">Progreso total: ${loan.percentPaid}%</div><div class="progress-track"><div class="progress-fill ${loan.status === "pagado" ? "is-complete" : ""}" style="width:${Math.min(loan.percentPaid,100)}%"></div></div></div>
+    ${loan.status === "atrasado" ? `<p class="error-text">Atrasado por ${formatMoney(loan.overdueAmount)} respecto a lo esperado a la fecha.</p>` : ""}
+    ${renderPaymentPlanSummary(loan)}
+  </div>`;
+}
+
 function renderExtensionSummary(loan) {
   const e = loan.extension;
   if (!e) return "";
-  const originalInterest = Math.round(loan.principal * e.original_rate) / 100;
-  const newStage = (loan.schedule || []).slice(e.original_months);
-  return `<div class="extension-summary">
-    <strong>Extensión acordada el ${formatDate(e.agreement_date)}</strong>
-    <div>Acuerdo original: ${e.original_months} meses al ${e.original_rate}% · interés ${formatMoney(originalInterest)}.</div>
-    <div>Extensión: ${e.additional_months} meses al ${e.additional_rate}% sobre ${e.calculation_base === "original" ? "capital original" : "capital pendiente"} (${formatMoney(e.base_amount)}) · interés extra ${formatMoney(e.additional_interest)}.</div>
-    <div>${loan.payment_plan ? "El interés y el capital se cobran según el plan mostrado abajo." : `Cuota adicional: ${newStage.length ? formatMoney(newStage[0].amount) : "-"}.`} Saldo total actual: ${formatMoney(loan.pendingBalance)}.</div>
+  const due = loan.schedule?.[loan.term_months - 1]?.due_date;
+  return `<div class="panel extension-terms-panel">
+    <div class="panel-header"><h2>Extensión del préstamo</h2></div>
+    <p class="muted">Acuerdo registrado el ${formatDate(e.agreement_date)}. No se entregó capital nuevo.</p>
+    <div class="detail-grid">
+      <div class="detail-item"><div class="detail-label">Meses agregados</div><div class="detail-value">${e.additional_months} meses</div></div>
+      <div class="detail-item"><div class="detail-label">Interés de la extensión</div><div class="detail-value">${e.additional_rate}%</div></div>
+      <div class="detail-item"><div class="detail-label">Calculado sobre</div><div class="detail-value">${e.calculation_base === "original" ? "Capital original" : "Capital pendiente"}</div></div>
+      <div class="detail-item"><div class="detail-label">Base del cálculo</div><div class="detail-value">${formatMoney(e.base_amount)}</div></div>
+      <div class="detail-item"><div class="detail-label">Interés adicional</div><div class="detail-value v-profit">${formatMoney(e.additional_interest)}</div></div>
+      <div class="detail-item"><div class="detail-label">Vencimiento extendido</div><div class="detail-value">${due ? formatDate(due) : "-"}</div></div>
+    </div>
   </div>`;
 }
 

@@ -411,8 +411,8 @@ app.put("/api/loans/:id", async (c) => {
   const currentLoan = decodeLoan(existing as LoanRecord);
   if ((currentLoan.extension || currentLoan.payment_plan) && (
     validated.principal !== Number(currentLoan.principal) ||
-    validated.interestRate !== Number(currentLoan.interest_rate) ||
-    validated.termMonths !== Number(currentLoan.term_months) ||
+    validated.interestRate !== Number(currentLoan.extension?.original_rate ?? currentLoan.interest_rate) ||
+    validated.termMonths !== Number(currentLoan.extension?.original_months ?? currentLoan.term_months) ||
     validated.startDate !== currentLoan.start_date
   )) return c.json({ error: "Después de definir el calendario solo puedes editar la nota. Las cuotas y pagos quedan protegidos." }, 400);
 
