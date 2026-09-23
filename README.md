@@ -147,3 +147,7 @@ Ejemplo: una cuota que vence en agosto y se cobra en septiembre queda registrada
 ### Estado visual de cada cuota
 
 El calendario muestra **Pagado** cuando la cuota está cubierta, **Pago parcial** si aún no vence, **Pago parcial · atrasado** si ya venció, **Atrasado** si venció sin pago y **Pendiente** para cuotas futuras sin pago. Los contadores y las barras se recalculan automáticamente después de registrar o eliminar un pago. Esta mejora visual no necesita otra migración SQL además de la incluida en este ZIP.
+
+### Portal del cliente (solo lectura)
+
+El enlace del cliente muestra para cada préstamo el calendario de cuotas con estados y avance, la nota del préstamo y un historial con fecha de cobro, mes aplicado, monto y nota de cada pago. El token del enlace solo habilita el GET de su propio portal; los endpoints que crean, editan o eliminan datos siguen protegidos por la sesión del dueño. No hay botones de edición en el portal. Esta mejora no requiere una migración adicional.

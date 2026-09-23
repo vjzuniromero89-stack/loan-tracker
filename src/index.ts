@@ -224,7 +224,7 @@ app.get("/api/portal/:clientId/:token", async (c) => {
   const loansComputed = await Promise.all(
     ((loans as unknown as LoanRecord[]) || []).map(async (loan) => {
       const payments = await fetchPaymentsForLoan(supabase, loan.id);
-      return { ...loan, ...computeLoan(loan, payments), paymentsList: payments };
+      return { ...loan, ...computeLoan(loan, payments), ...installments(loan, payments), paymentsList: payments };
     })
   );
 

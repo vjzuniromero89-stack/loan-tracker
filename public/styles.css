@@ -910,3 +910,7 @@ td.wrap, th.wrap { white-space: normal; }
   .installment-table td:nth-child(6) { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .installment-mobile-date { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; }
 }
+
+.portal-loan-note { margin-top: 18px; border-left: 4px solid var(--primary); border-radius: 8px; padding: 12px 16px; background: var(--surface-alt); white-space: pre-wrap; overflow-wrap: anywhere; }
+.portal-loan-note strong { display: block; margin-bottom: 5px; font-size: 0.8rem; }
+.portal-loan-note p { margin: 0; color: var(--text-muted); }

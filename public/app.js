@@ -666,14 +666,21 @@ async function renderPortalClient(clientId, token) {
 
   const loanBlocks = client.loans.length
     ? client.loans.map((l) => {
+        const allocationByPayment = new Map();
+        for (const allocation of l.allocations || []) {
+          const list = allocationByPayment.get(allocation.payment_id) || [];
+          list.push(allocation);
+          allocationByPayment.set(allocation.payment_id, list);
+        }
         const paymentRows = (l.paymentsList || []).length
           ? l.paymentsList.slice().reverse().map((p) => `
               <tr>
                 <td>${formatDate(p.payment_date)}</td>
                 <td>${formatMoney(p.amount)}</td>
+                <td>${(allocationByPayment.get(p.id) || []).map(item => `${escapeHtml(new Date(item.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))}: ${formatMoney(item.amount)}`).join("<br>") || "-"}</td>
                 <td class="wrap">${escapeHtml(p.notes || "-")}</td>
               </tr>`).join("")
-          : `<tr><td colspan="3" class="empty-state">Todavía no hay pagos registrados</td></tr>`;
+          : `<tr><td colspan="4" class="empty-state">Todavía no hay pagos registrados</td></tr>`;
 
         const overdueNote = l.status === "atrasado"
           ? `<p class="error-text">Atrasado por ${formatMoney(l.overdueAmount)} respecto a lo esperado a la fecha.</p>`
@@ -699,9 +706,14 @@ async function renderPortalClient(clientId, token) {
               <div class="progress-track"><div class="progress-fill ${l.status === "pagado" ? "is-complete" : ""}" style="width:${Math.min(l.percentPaid, 100)}%"></div></div>
             </div>
             ${overdueNote}
+            ${l.notes ? `<div class="portal-loan-note"><strong>Nota del préstamo</strong><p>${escapeHtml(l.notes)}</p></div>` : ""}
+          </div>
+          ${renderInstallmentCalendar(l)}
+          <div class="panel">
+            <div class="panel-header"><h2>Historial de pagos</h2></div>
             <div class="table-wrap" style="margin-top:16px;">
               <table>
-                <thead><tr><th>Fecha</th><th>Monto</th><th class="wrap">Notas</th></tr></thead>
+                <thead><tr><th>Fecha cobrada</th><th>Monto</th><th>Mes aplicado</th><th class="wrap">Notas</th></tr></thead>
                 <tbody>${paymentRows}</tbody>
               </table>
             </div>
@@ -933,18 +945,7 @@ async function renderLoanDetail(id) {
       ${buildWaterfall(loan)}
     </div>
 
-    <div class="panel">
-      <div class="panel-header"><h2>Calendario de cuotas</h2></div>
-      <div class="installment-summary" aria-label="Resumen de cuotas">
-        <div class="installment-summary-paid"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "paid").length}</strong><span>Pagadas</span></div>
-        <div class="installment-summary-partial"><strong>${(loan.schedule || []).filter(r => r.paid > 0 && r.remaining >= 0.005).length}</strong><span>Con pago parcial</span></div>
-        <div class="installment-summary-late"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "late").length}</strong><span>Atrasadas</span></div>
-        <div class="installment-summary-pending"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "pending").length}</strong><span>Pendientes</span></div>
-      </div>
-      <div class="table-wrap installment-table-wrap"><table class="installment-table"><thead><tr><th>Mes</th><th>Vence</th><th>Cuota</th><th>Pagado</th><th>Falta</th><th>Estado</th><th>Avance</th></tr></thead><tbody>
-        ${(loan.schedule || []).map(r => renderInstallment(r, todayStr())).join("")}
-      </tbody></table></div>
-    </div>
+    ${renderInstallmentCalendar(loan)}
     <div class="panel">
       <div class="panel-header"><h2>Historial de pagos</h2></div>
       <div class="table-wrap">
@@ -982,6 +983,21 @@ async function renderLoanDetail(id) {
       });
     });
   });
+}
+
+function renderInstallmentCalendar(loan) {
+  return `    <div class="panel">
+      <div class="panel-header"><h2>Calendario de cuotas</h2></div>
+      <div class="installment-summary" aria-label="Resumen de cuotas">
+        <div class="installment-summary-paid"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "paid").length}</strong><span>Pagadas</span></div>
+        <div class="installment-summary-partial"><strong>${(loan.schedule || []).filter(r => r.paid > 0 && r.remaining >= 0.005).length}</strong><span>Con pago parcial</span></div>
+        <div class="installment-summary-late"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "late").length}</strong><span>Atrasadas</span></div>
+        <div class="installment-summary-pending"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "pending").length}</strong><span>Pendientes</span></div>
+      </div>
+      <div class="table-wrap installment-table-wrap"><table class="installment-table"><thead><tr><th>Mes</th><th>Vence</th><th>Cuota</th><th>Pagado</th><th>Falta</th><th>Estado</th><th>Avance</th></tr></thead><tbody>
+        ${(loan.schedule || []).map(r => renderInstallment(r, todayStr())).join("")}
+      </tbody></table></div>
+    </div>`;
 }
 
 function installmentStatus(row, today) {
