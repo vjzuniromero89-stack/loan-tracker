@@ -160,13 +160,13 @@ Ejemplo: cuota de agosto $900, pago de $1,400 aplicado desde agosto → agosto q
 
 ## Extensiones de préstamos
 
-En la ficha del préstamo, **Extender préstamo** permite registrar el plazo e interés del acuerdo original, los meses e interés adicionales, la base del nuevo interés (capital original o capital pendiente) y la fecha del acuerdo. Se muestra una vista previa antes de guardar. No se entrega capital adicional: el préstamo conserva su principal y todos los pagos existentes. El portal de solo lectura también muestra las dos etapas.
+En la ficha del préstamo, **+ Agregar extensión** permite registrar el plazo e interés del acuerdo original, los meses e interés adicionales, la base del nuevo interés (capital original o capital pendiente) y la fecha del acuerdo. Se muestra una vista previa antes de guardar. No se entrega capital adicional: el préstamo conserva su principal y todos los pagos existentes. El portal de solo lectura también muestra las dos etapas.
 
 Ejemplo: $5,000 del 15 de julio de 2026 al 40% por cinco meses ($2,000 de interés), más cinco meses al 40% sobre los mismos $5,000 ($2,000 extra): total $9,000. Las cuotas originales de agosto a diciembre son $1,400 cada una y las cinco cuotas adicionales de enero a mayo son $400 cada una. Si ya se cobró $1,400, el saldo total nuevo es $7,600; el pago conserva el mes al que se aplicó. La app no convierte retroactivamente las diez cuotas en $900, porque eso cambiaría lo pactado para los primeros cinco meses.
 
 Si el préstamo ya estaba registrado como **80% / 10 meses**, al abrir la extensión se proponen **40% / 5 meses** originales y **40% / 5 meses** adicionales. Revisa la vista previa antes de guardar. Si eliges el capital pendiente, el interés adicional se calcula una sola vez al momento del acuerdo, siguiendo la regla actual de la app que aplica los pagos primero al interés original y luego al capital.
 
-Se permite una extensión por préstamo en esta versión. Después de registrarla, las condiciones y fechas quedan protegidas; la nota puede seguir editándose. La extensión se guarda con la nota del préstamo en un formato interno compatible con la base actual, así que no requiere otra migración. El cliente ve la nota normal, nunca el formato interno.
+Cada préstamo permite agregar una extensión y eliminarla para volver al acuerdo original. Para registrar otra extensión, elimina la anterior y revisa el calendario antes de guardar la nueva. Después de registrarla, las condiciones y fechas quedan protegidas; la nota puede seguir editándose. La extensión se guarda con la nota del préstamo en un formato interno compatible con la base actual, así que no requiere otra migración. El cliente ve la nota normal, nunca el formato interno.
 
 ## Plan de cobro: primero interés y después capital
 
@@ -178,8 +178,8 @@ Cambiar el plan recalcula los meses cubiertos por los pagos históricos sin edit
 
 ### Consultar una extensión ya registrada
 
-El botón de la ficha permanece visible: muestra **+ Extender préstamo** antes del acuerdo y **Ver extensión** después. La vista de detalles incluye ambos intereses, meses, fecha del acuerdo, base de cálculo y saldo, además del plan de interés y capital si existe. Registrar el plan no elimina ni reemplaza la extensión. Cuando hay un plan activo, la ficha describe las condiciones de la extensión sin llamar “cuota adicional” a una cuota que el nuevo calendario atribuye al capital.
+La ficha del préstamo muestra **+ Agregar extensión** y **Eliminar extensión**. En la ficha de cada cliente también aparece la acción correspondiente junto a cada préstamo. Los datos de la extensión muestran ambos intereses, meses, fecha del acuerdo, base de cálculo y saldo, además del plan de interés y capital si existe. Registrar el plan no elimina ni reemplaza la extensión. Cuando hay un plan activo, la ficha describe las condiciones de la extensión sin llamar “cuota adicional” a una cuota que el nuevo calendario atribuye al capital.
 
 ### Acción opcional para extender
 
-El préstamo conserva sus condiciones originales hasta que el cliente solicite más tiempo. Entonces el dueño pulsa **+ Extender préstamo**, revisa los meses y el interés adicional, y guarda el acuerdo. Si ya existe, el mismo botón pasa a **Ver extensión**. Esta acción no se ejecuta automáticamente al crear un préstamo ni al configurar el plan de interés y capital.
+El préstamo conserva sus condiciones originales hasta que el cliente solicite más tiempo. Entonces el dueño pulsa **+ Agregar extensión**, revisa los meses y el interés adicional, y guarda el acuerdo. Si necesita volver al acuerdo original, pulsa **Eliminar extensión** y confirma. Si hay pagos atribuidos a meses adicionales o superiores al total original, el servidor explica el problema y conserva la extensión hasta resolverlo. Esta acción no se ejecuta automáticamente al crear un préstamo ni al configurar el plan de interés y capital.

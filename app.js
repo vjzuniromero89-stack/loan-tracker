@@ -523,8 +523,11 @@ async function renderClientDetail(id) {
           <td>${l.percentPaid}%</td>
           <td>${formatMoney(l.pendingBalance)}</td>
           <td>${statusBadge(l.status)}</td>
+          <td>${l.extension
+            ? `<button type="button" class="btn-danger btn-sm" data-remove-extension="${l.id}">Eliminar extensión</button>`
+            : `<button type="button" class="btn-secondary btn-sm" data-add-extension="${l.id}">+ Agregar extensión</button>`}</td>
         </tr>`).join("")
-    : `<tr><td colspan="8" class="empty-state">Este cliente todavía no tiene préstamos</td></tr>`;
+    : `<tr><td colspan="9" class="empty-state">Este cliente todavía no tiene préstamos</td></tr>`;
 
   const clientTotals = client.loans.reduce(
     (acc, l) => {
@@ -593,7 +596,7 @@ async function renderClientDetail(id) {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Inicio</th><th>Monto</th><th>Interés</th><th>Plazo</th><th>Cuota</th><th>Pagado</th><th>Saldo</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Inicio</th><th>Monto</th><th>Interés</th><th>Plazo</th><th>Cuota</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Extensión</th></tr></thead>
           <tbody>${loanRows}</tbody>
         </table>
       </div>
@@ -617,6 +620,17 @@ async function renderClientDetail(id) {
   contentEl.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", () => { location.hash = `#/loans/${row.dataset.id}`; });
   });
+
+  contentEl.querySelectorAll("[data-add-extension]").forEach(btn => btn.addEventListener("click", event => {
+    event.stopPropagation();
+    const loan = client.loans.find(l => l.id === btn.dataset.addExtension);
+    if (loan) openExtensionModal(loan);
+  }));
+  contentEl.querySelectorAll("[data-remove-extension]").forEach(btn => btn.addEventListener("click", event => {
+    event.stopPropagation();
+    const loan = client.loans.find(l => l.id === btn.dataset.removeExtension);
+    if (loan) confirmDeleteExtension(loan, () => renderClientDetail(id));
+  }));
 
   const portalLinkInput = document.getElementById("portal-link-input");
   portalLinkInput.addEventListener("click", () => portalLinkInput.select());
@@ -913,7 +927,8 @@ async function renderLoanDetail(id) {
         </div>
         <div class="actions">
           <button class="btn-primary btn-sm" id="register-payment-btn">+ Registrar pago</button>
-          <button class="btn-secondary btn-sm" id="extend-loan-btn">${loan.extension ? "Ver extensión" : "+ Extender préstamo"}</button>
+          <button class="btn-secondary btn-sm" id="add-extension-btn" ${loan.extension ? 'disabled title="Ya existe una extensión. Elimínala antes de registrar otra."' : ""}>+ Agregar extensión</button>
+          <button class="btn-danger btn-sm" id="delete-extension-btn" ${loan.extension ? "" : 'disabled title="Este préstamo no tiene extensión."'}>Eliminar extensión</button>
           ${loan.term_months > 1 ? `<button class="btn-secondary btn-sm" id="payment-plan-btn">${loan.payment_plan ? "Ajustar plan" : "+ Plan interés → capital"}</button>` : ""}
           <button class="btn-secondary btn-sm" id="edit-loan-btn">Editar</button>
           <button class="btn-danger btn-sm" id="delete-loan-btn">Eliminar</button>
@@ -966,7 +981,9 @@ async function renderLoanDetail(id) {
   animateWaterfall();
 
   document.getElementById("register-payment-btn").addEventListener("click", () => openPaymentModal(loan));
-  document.getElementById("extend-loan-btn").addEventListener("click", () => loan.extension ? viewExtensionModal(loan) : openExtensionModal(loan));
+  document.getElementById("add-extension-btn").addEventListener("click", () => openExtensionModal(loan));
+  document.getElementById("delete-extension-btn").addEventListener("click", () =>
+    confirmDeleteExtension(loan, () => renderLoanDetail(loan.id)));
   document.getElementById("payment-plan-btn")?.addEventListener("click", () => openPaymentPlanModal(loan));
   document.getElementById("edit-loan-btn").addEventListener("click", () => openLoanModal(loan));
   document.getElementById("delete-loan-btn").addEventListener("click", () => {
@@ -1044,22 +1061,12 @@ function openPaymentPlanModal(loan) {
   });
 }
 
-function viewExtensionModal(loan) {
-  const e = loan.extension;
-  if (!e) return openExtensionModal(loan);
-  const originalInterest = Math.round(loan.principal * e.original_rate) / 100;
-  openModal("Extensión registrada", `
-    <div class="extension-details">
-      <p>Fecha del acuerdo: <strong>${formatDate(e.agreement_date)}</strong></p>
-      <p>Capital prestado: <strong>${formatMoney(loan.principal)}</strong> (sin nuevo desembolso).</p>
-      <p>Acuerdo original: <strong>${e.original_months} meses al ${e.original_rate}%</strong> · interés ${formatMoney(originalInterest)}.</p>
-      <p>Extensión: <strong>${e.additional_months} meses al ${e.additional_rate}%</strong> sobre ${e.calculation_base === "original" ? "capital original" : "capital pendiente"} de ${formatMoney(e.base_amount)} · interés ${formatMoney(e.additional_interest)}.</p>
-      <p>Total a pagar: <strong>${formatMoney(loan.totalToPay)}</strong> · ya pagado: ${formatMoney(loan.totalPaid)} · saldo: <strong>${formatMoney(loan.pendingBalance)}</strong>.</p>
-      ${loan.payment_plan ? `<p>Plan de cobro: primero todo el interés durante ${loan.payment_plan.interest_months} meses; después el capital durante ${loan.term_months - loan.payment_plan.interest_months} meses.</p>` : ""}
-    </div>
-    <div class="form-actions"><button class="btn-secondary" id="close-extension-details" type="button">Cerrar</button></div>`, {
-    onMount: root => { root.querySelector("#close-extension-details").onclick = closeModal; },
-  });
+function confirmDeleteExtension(loan, onSuccess) {
+  confirmModal("¿Eliminar la extensión y volver a los meses e interés originales? Los pagos registrados se conservarán y el calendario se recalculará.", async () => {
+    await api(`/api/loans/${loan.id}/extension`, { method: "DELETE" });
+    showToast("Extensión eliminada; préstamo original restaurado", "success");
+    await onSuccess();
+  }, "Eliminar extensión");
 }
 
 function renderExtensionSummary(loan) {
@@ -1076,19 +1083,19 @@ function renderExtensionSummary(loan) {
 }
 
 function openExtensionModal(loan) {
-  openModal("Extender préstamo", `
+  openModal("Agregar extensión", `
     <form id="extension-form">
-      <p class="muted">Capital prestado: <strong>${formatMoney(loan.principal)}</strong>. Los pagos ya registrados se conservan.</p>
+      <p class="muted">Capital prestado: <strong>${formatMoney(loan.principal)}</strong>. Revisa los meses y el interés originales, luego ingresa la nueva extensión. Los pagos ya registrados se conservan.</p>
       <div class="form-grid">
-        <div class="field"><label>Meses del acuerdo original *</label><input id="ext-original-months" type="number" min="1" max="120" step="1" value="${loan.term_months === 10 && loan.interest_rate === 80 ? 5 : loan.term_months}" required /></div>
-        <div class="field"><label>Interés original (%) *</label><input id="ext-original-rate" type="number" min="0" max="1000" step="0.01" value="${loan.term_months === 10 && loan.interest_rate === 80 ? 40 : loan.interest_rate}" required /></div>
+        <div class="field"><label>Meses del acuerdo original *</label><input id="ext-original-months" type="number" min="1" max="120" step="1" value="${loan.term_months}" required /></div>
+        <div class="field"><label>Interés original (%) *</label><input id="ext-original-rate" type="number" min="0" max="1000" step="0.01" value="${loan.interest_rate}" required /></div>
         <div class="field"><label>Meses adicionales *</label><input id="ext-additional-months" type="number" min="1" max="120" step="1" value="5" required /></div>
         <div class="field"><label>Interés adicional (%) *</label><input id="ext-additional-rate" type="number" min="0" max="1000" step="0.01" value="40" required /></div>
         <div class="field"><label>Aplicar el nuevo interés sobre *</label><select id="ext-base"><option value="original">Capital original</option><option value="remaining">Capital pendiente</option></select></div>
         <div class="field"><label>Fecha del acuerdo *</label><input id="ext-date" type="date" value="${todayStr()}" required /></div>
       </div>
       <div id="extension-preview" class="extension-preview" aria-live="polite"></div>
-      <div class="form-actions"><button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button><button type="submit" id="save-extension" class="btn-primary">Guardar extensión</button></div>
+      <div class="form-actions"><button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button><button type="submit" id="save-extension" class="btn-primary">Agregar extensión</button></div>
     </form>`, {
     size: "lg",
     onMount: root => {

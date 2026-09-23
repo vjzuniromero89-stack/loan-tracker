@@ -485,6 +485,8 @@ app.post("/api/loans/:id/extension", async (c) => {
   const candidateSchedule = installments(candidate, payments);
   if (candidateSchedule.unallocated > 0.001) return c.json({ error: "Hay pagos asignados fuera del nuevo plazo. Revisa el plazo original y la extensión." }, 400);
   let updateQuery = supabase.from(LOANS_TABLE).update({
+    interest_rate: originalRate,
+    term_months: originalMonths,
     notes: encodeLoanNotes(loan.notes, extension, loan.payment_plan),
   }).eq("id", id);
   updateQuery = rawLoan.notes === null ? updateQuery.is("notes", null) : updateQuery.eq("notes", rawLoan.notes);
@@ -492,6 +494,46 @@ app.post("/api/loans/:id/extension", async (c) => {
   if (error) return c.json({ error: error.message }, 500);
   if (!updated?.length) return c.json({ error: "El préstamo cambió mientras registrabas la extensión. Recarga la ficha y revisa los datos." }, 409);
   return c.json({ ...candidate, payments, ...computeLoan(candidate, payments), ...candidateSchedule }, 201);
+});
+
+app.delete("/api/loans/:id/extension", async (c) => {
+  const supabase = getSupabase(c.env);
+  const id = c.req.param("id");
+  const { data: rawLoan, error: readError } = await supabase.from(LOANS_TABLE)
+    .select("*").eq("id", id).maybeSingle();
+  if (readError) return c.json({ error: readError.message }, 500);
+  if (!rawLoan) return c.json({ error: "Préstamo no encontrado" }, 404);
+  const loan = decodeLoan(rawLoan as LoanRecord);
+  if (!loan.extension) return c.json({ error: "Este préstamo no tiene una extensión para eliminar" }, 400);
+  const originalMonths = loan.extension.original_months;
+  const originalRate = loan.extension.original_rate;
+  if (loan.payment_plan && loan.payment_plan.interest_months >= originalMonths) {
+    return c.json({ error: "Ajusta primero el plan de interés: sus meses deben ser menos que el plazo original." }, 400);
+  }
+  const payments = await fetchPaymentsForLoan(supabase, id);
+  if (payments.some(p => p.installment_number && p.installment_number > originalMonths)) {
+    return c.json({ error: "Hay pagos asignados a los meses de la extensión. Revisa esos pagos antes de eliminarla." }, 400);
+  }
+  const originalTotal = round2(Number(loan.principal) * (1 + originalRate / 100));
+  const totalPaid = round2(payments.reduce((sum, p) => sum + Number(p.amount), 0));
+  if (totalPaid > originalTotal + 0.001) {
+    return c.json({ error: "Los pagos registrados superan el total original. No se puede eliminar la extensión sin corregirlos." }, 400);
+  }
+  const notes = loan.payment_plan ? encodeLoanNotes(loan.notes, undefined, loan.payment_plan) : loan.notes;
+  const restored = decodeLoan({ ...rawLoan, interest_rate: originalRate,
+    term_months: originalMonths, notes } as LoanRecord);
+  const schedule = installments(restored, payments);
+  if (schedule.unallocated > 0.001) {
+    return c.json({ error: "Un pago no cabe en el calendario original. Revisa sus meses antes de eliminar la extensión." }, 400);
+  }
+  let updateQuery = supabase.from(LOANS_TABLE).update({
+    interest_rate: originalRate, term_months: originalMonths, notes,
+  }).eq("id", id);
+  updateQuery = rawLoan.notes === null ? updateQuery.is("notes", null) : updateQuery.eq("notes", rawLoan.notes);
+  const { data: updated, error } = await updateQuery.select("id");
+  if (error) return c.json({ error: error.message }, 500);
+  if (!updated?.length) return c.json({ error: "El préstamo cambió. Recarga la ficha antes de eliminar la extensión." }, 409);
+  return c.json({ ...restored, payments, ...computeLoan(restored, payments), ...schedule });
 });
 
 app.post("/api/loans/:id/payment-plan", async (c) => {
