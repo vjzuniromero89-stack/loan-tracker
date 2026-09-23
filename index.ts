@@ -450,7 +450,7 @@ app.post("/api/loans/:id/extension", async (c) => {
   if (readError) return c.json({ error: readError.message }, 500);
   if (!rawLoan) return c.json({ error: "Préstamo no encontrado" }, 404);
   const loan = decodeLoan(rawLoan as LoanRecord);
-  if (loan.extension) return c.json({ error: "Este préstamo ya tiene una prórroga registrada" }, 400);
+  if (loan.extension) return c.json({ error: "Este préstamo ya tiene una extensión registrada" }, 400);
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
   const originalMonths = Number(body.original_months);
   const additionalMonths = Number(body.additional_months);
@@ -465,7 +465,7 @@ app.post("/api/loans/:id/extension", async (c) => {
       (base !== "original" && base !== "remaining") ||
       !/^\d{4}-\d{2}-\d{2}$/.test(agreementDate) ||
       Number.isNaN(Date.parse(agreementDate + "T00:00:00Z"))) {
-    return c.json({ error: "Revisa los meses, porcentajes, base y fecha de la prórroga" }, 400);
+    return c.json({ error: "Revisa los meses, porcentajes, base y fecha de la extensión" }, 400);
   }
   const payments = await fetchPaymentsForLoan(supabase, id);
   const paid = round2(payments.reduce((sum, p) => sum + Number(p.amount), 0));
@@ -483,14 +483,14 @@ app.post("/api/loans/:id/extension", async (c) => {
   const candidateTotal = round2(Number(loan.principal) + originalInterest + extraInterest);
   if (paid > candidateTotal + 0.001) return c.json({ error: "Los pagos existentes superan el total calculado. Revisa los porcentajes." }, 400);
   const candidateSchedule = installments(candidate, payments);
-  if (candidateSchedule.unallocated > 0.001) return c.json({ error: "Hay pagos asignados fuera del nuevo plazo. Revisa el plazo original y la prórroga." }, 400);
+  if (candidateSchedule.unallocated > 0.001) return c.json({ error: "Hay pagos asignados fuera del nuevo plazo. Revisa el plazo original y la extensión." }, 400);
   let updateQuery = supabase.from(LOANS_TABLE).update({
     notes: encodeLoanNotes(loan.notes, extension, loan.payment_plan),
   }).eq("id", id);
   updateQuery = rawLoan.notes === null ? updateQuery.is("notes", null) : updateQuery.eq("notes", rawLoan.notes);
   const { data: updated, error } = await updateQuery.select("id");
   if (error) return c.json({ error: error.message }, 500);
-  if (!updated?.length) return c.json({ error: "El préstamo cambió mientras registrabas la prórroga. Recarga la ficha y revisa los datos." }, 409);
+  if (!updated?.length) return c.json({ error: "El préstamo cambió mientras registrabas la extensión. Recarga la ficha y revisa los datos." }, 409);
   return c.json({ ...candidate, payments, ...computeLoan(candidate, payments), ...candidateSchedule }, 201);
 });
 

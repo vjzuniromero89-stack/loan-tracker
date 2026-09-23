@@ -937,3 +937,6 @@ td.wrap, th.wrap { white-space: normal; }
   .installment-table td:nth-child(7) { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
   .installment-table td:nth-child(5)::before { content: none; }
 }
+
+.extension-details { padding: 2px 4px; line-height: 1.6; }
+.extension-details p { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-alt); }

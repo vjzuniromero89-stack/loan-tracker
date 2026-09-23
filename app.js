@@ -913,7 +913,7 @@ async function renderLoanDetail(id) {
         </div>
         <div class="actions">
           <button class="btn-primary btn-sm" id="register-payment-btn">+ Registrar pago</button>
-          ${loan.extension ? "" : `<button class="btn-secondary btn-sm" id="extend-loan-btn">+ Prorrogar préstamo</button>`}
+          <button class="btn-secondary btn-sm" id="extend-loan-btn">${loan.extension ? "Ver extensión" : "+ Extender préstamo"}</button>
           ${loan.term_months > 1 ? `<button class="btn-secondary btn-sm" id="payment-plan-btn">${loan.payment_plan ? "Ajustar plan" : "+ Plan interés → capital"}</button>` : ""}
           <button class="btn-secondary btn-sm" id="edit-loan-btn">Editar</button>
           <button class="btn-danger btn-sm" id="delete-loan-btn">Eliminar</button>
@@ -966,7 +966,7 @@ async function renderLoanDetail(id) {
   animateWaterfall();
 
   document.getElementById("register-payment-btn").addEventListener("click", () => openPaymentModal(loan));
-  document.getElementById("extend-loan-btn")?.addEventListener("click", () => openExtensionModal(loan));
+  document.getElementById("extend-loan-btn").addEventListener("click", () => loan.extension ? viewExtensionModal(loan) : openExtensionModal(loan));
   document.getElementById("payment-plan-btn")?.addEventListener("click", () => openPaymentPlanModal(loan));
   document.getElementById("edit-loan-btn").addEventListener("click", () => openLoanModal(loan));
   document.getElementById("delete-loan-btn").addEventListener("click", () => {
@@ -1044,21 +1044,39 @@ function openPaymentPlanModal(loan) {
   });
 }
 
+function viewExtensionModal(loan) {
+  const e = loan.extension;
+  if (!e) return openExtensionModal(loan);
+  const originalInterest = Math.round(loan.principal * e.original_rate) / 100;
+  openModal("Extensión registrada", `
+    <div class="extension-details">
+      <p>Fecha del acuerdo: <strong>${formatDate(e.agreement_date)}</strong></p>
+      <p>Capital prestado: <strong>${formatMoney(loan.principal)}</strong> (sin nuevo desembolso).</p>
+      <p>Acuerdo original: <strong>${e.original_months} meses al ${e.original_rate}%</strong> · interés ${formatMoney(originalInterest)}.</p>
+      <p>Extensión: <strong>${e.additional_months} meses al ${e.additional_rate}%</strong> sobre ${e.calculation_base === "original" ? "capital original" : "capital pendiente"} de ${formatMoney(e.base_amount)} · interés ${formatMoney(e.additional_interest)}.</p>
+      <p>Total a pagar: <strong>${formatMoney(loan.totalToPay)}</strong> · ya pagado: ${formatMoney(loan.totalPaid)} · saldo: <strong>${formatMoney(loan.pendingBalance)}</strong>.</p>
+      ${loan.payment_plan ? `<p>Plan de cobro: primero todo el interés durante ${loan.payment_plan.interest_months} meses; después el capital durante ${loan.term_months - loan.payment_plan.interest_months} meses.</p>` : ""}
+    </div>
+    <div class="form-actions"><button class="btn-secondary" id="close-extension-details" type="button">Cerrar</button></div>`, {
+    onMount: root => { root.querySelector("#close-extension-details").onclick = closeModal; },
+  });
+}
+
 function renderExtensionSummary(loan) {
   const e = loan.extension;
   if (!e) return "";
   const originalInterest = Math.round(loan.principal * e.original_rate) / 100;
   const newStage = (loan.schedule || []).slice(e.original_months);
   return `<div class="extension-summary">
-    <strong>Prórroga acordada el ${formatDate(e.agreement_date)}</strong>
-    <div>Etapa inicial: ${e.original_months} meses al ${e.original_rate}% · interés ${formatMoney(originalInterest)}.</div>
-    <div>Etapa adicional: ${e.additional_months} meses al ${e.additional_rate}% sobre ${e.calculation_base === "original" ? "capital original" : "capital pendiente"} (${formatMoney(e.base_amount)}) · interés extra ${formatMoney(e.additional_interest)}.</div>
-    <div>Cuota adicional: ${newStage.length ? formatMoney(newStage[0].amount) : "-"} · saldo total actual: ${formatMoney(loan.pendingBalance)}.</div>
+    <strong>Extensión acordada el ${formatDate(e.agreement_date)}</strong>
+    <div>Acuerdo original: ${e.original_months} meses al ${e.original_rate}% · interés ${formatMoney(originalInterest)}.</div>
+    <div>Extensión: ${e.additional_months} meses al ${e.additional_rate}% sobre ${e.calculation_base === "original" ? "capital original" : "capital pendiente"} (${formatMoney(e.base_amount)}) · interés extra ${formatMoney(e.additional_interest)}.</div>
+    <div>${loan.payment_plan ? "El interés y el capital se cobran según el plan mostrado abajo." : `Cuota adicional: ${newStage.length ? formatMoney(newStage[0].amount) : "-"}.`} Saldo total actual: ${formatMoney(loan.pendingBalance)}.</div>
   </div>`;
 }
 
 function openExtensionModal(loan) {
-  openModal("Prorrogar préstamo", `
+  openModal("Extender préstamo", `
     <form id="extension-form">
       <p class="muted">Capital prestado: <strong>${formatMoney(loan.principal)}</strong>. Los pagos ya registrados se conservan.</p>
       <div class="form-grid">
@@ -1070,7 +1088,7 @@ function openExtensionModal(loan) {
         <div class="field"><label>Fecha del acuerdo *</label><input id="ext-date" type="date" value="${todayStr()}" required /></div>
       </div>
       <div id="extension-preview" class="extension-preview" aria-live="polite"></div>
-      <div class="form-actions"><button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button><button type="submit" id="save-extension" class="btn-primary">Guardar prórroga</button></div>
+      <div class="form-actions"><button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button><button type="submit" id="save-extension" class="btn-primary">Guardar extensión</button></div>
     </form>`, {
     size: "lg",
     onMount: root => {
@@ -1115,7 +1133,7 @@ function openExtensionModal(loan) {
         try {
           await api(`/api/loans/${loan.id}/extension`, { method: "POST", body: JSON.stringify(values()) });
           closeModal();
-          showToast("Prórroga guardada; calendario recalculado", "success");
+          showToast("Extensión guardada; calendario recalculado", "success");
           renderLoanDetail(loan.id);
         } catch (err) { showToast(err.message); }
       });
