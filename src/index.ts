@@ -409,24 +409,24 @@ app.put("/api/loans/:id", async (c) => {
   const validated = validateLoanInput(body);
   if ("error" in validated) return c.json(validated, 400);
   const currentLoan = decodeLoan(existing as LoanRecord);
-  if (currentLoan.extension && (
+  if ((currentLoan.extension || currentLoan.payment_plan) && (
     validated.principal !== Number(currentLoan.principal) ||
     validated.interestRate !== Number(currentLoan.interest_rate) ||
     validated.termMonths !== Number(currentLoan.term_months) ||
     validated.startDate !== currentLoan.start_date
-  )) return c.json({ error: "Después de una prórroga solo puedes editar la nota. Las cuotas y pagos quedan protegidos." }, 400);
+  )) return c.json({ error: "Después de definir el calendario solo puedes editar la nota. Las cuotas y pagos quedan protegidos." }, 400);
 
   const { error } = await supabase
     .from(LOANS_TABLE)
     .update({
-      ...(currentLoan.extension ? {} : {
+      ...((currentLoan.extension || currentLoan.payment_plan) ? {} : {
         principal: validated.principal,
         interest_rate: validated.interestRate,
         term_months: validated.termMonths,
         start_date: validated.startDate,
       }),
-      notes: currentLoan.extension
-        ? encodeLoanNotes((body.notes as string) || null, currentLoan.extension)
+      notes: (currentLoan.extension || currentLoan.payment_plan)
+        ? encodeLoanNotes((body.notes as string) || null, currentLoan.extension, currentLoan.payment_plan)
         : (body.notes as string) || null,
     })
     .eq("id", id);
@@ -479,19 +479,50 @@ app.post("/api/loans/:id/extension", async (c) => {
     calculation_base: base, base_amount: baseAmount,
     additional_interest: extraInterest, agreement_date: agreementDate,
   };
-  const candidate = decodeLoan({ ...rawLoan, notes: encodeLoanNotes(loan.notes, extension) } as LoanRecord);
+  const candidate = decodeLoan({ ...rawLoan, notes: encodeLoanNotes(loan.notes, extension, loan.payment_plan) } as LoanRecord);
   const candidateTotal = round2(Number(loan.principal) + originalInterest + extraInterest);
   if (paid > candidateTotal + 0.001) return c.json({ error: "Los pagos existentes superan el total calculado. Revisa los porcentajes." }, 400);
   const candidateSchedule = installments(candidate, payments);
   if (candidateSchedule.unallocated > 0.001) return c.json({ error: "Hay pagos asignados fuera del nuevo plazo. Revisa el plazo original y la prórroga." }, 400);
   let updateQuery = supabase.from(LOANS_TABLE).update({
-    notes: encodeLoanNotes(loan.notes, extension),
+    notes: encodeLoanNotes(loan.notes, extension, loan.payment_plan),
   }).eq("id", id);
   updateQuery = rawLoan.notes === null ? updateQuery.is("notes", null) : updateQuery.eq("notes", rawLoan.notes);
   const { data: updated, error } = await updateQuery.select("id");
   if (error) return c.json({ error: error.message }, 500);
   if (!updated?.length) return c.json({ error: "El préstamo cambió mientras registrabas la prórroga. Recarga la ficha y revisa los datos." }, 409);
   return c.json({ ...candidate, payments, ...computeLoan(candidate, payments), ...candidateSchedule }, 201);
+});
+
+app.post("/api/loans/:id/payment-plan", async (c) => {
+  const supabase = getSupabase(c.env);
+  const id = c.req.param("id");
+  const { data: rawLoan, error: readError } = await supabase.from(LOANS_TABLE)
+    .select("*").eq("id", id).maybeSingle();
+  if (readError) return c.json({ error: readError.message }, 500);
+  if (!rawLoan) return c.json({ error: "Préstamo no encontrado" }, 404);
+  const loan = decodeLoan(rawLoan as LoanRecord);
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const interestMonths = Number(body.interest_months);
+  if (!Number.isInteger(interestMonths) || interestMonths < 1 || interestMonths >= loan.term_months) {
+    return c.json({ error: "Los meses de interés deben ser menores que el plazo total" }, 400);
+  }
+  const plan = { interest_months: interestMonths };
+  const candidate = decodeLoan({ ...rawLoan, notes: encodeLoanNotes(loan.notes, loan.extension, plan) } as LoanRecord);
+  const payments = await fetchPaymentsForLoan(supabase, id);
+  const schedule = installments(candidate, payments);
+  if (schedule.unallocated > 0.001) return c.json({ error: "Hay pagos que exceden el plan; revisa los meses aplicados antes de guardarlo" }, 400);
+  const firstCapital = schedule.schedule.find(row => row.principal_amount > 0)?.number ?? loan.term_months + 1;
+  if (payments.some(p => p.installment_number && p.installment_number >= firstCapital) &&
+      schedule.schedule.slice(0, interestMonths).some(row => row.remaining > 0.001)) {
+    return c.json({ error: "Hay pagos ya asignados a meses de capital mientras el interés está pendiente. Corrige esos meses antes de aplicar el plan." }, 400);
+  }
+  let updateQuery = supabase.from(LOANS_TABLE).update({ notes: encodeLoanNotes(loan.notes, loan.extension, plan) }).eq("id", id);
+  updateQuery = rawLoan.notes === null ? updateQuery.is("notes", null) : updateQuery.eq("notes", rawLoan.notes);
+  const { data: updated, error } = await updateQuery.select("id");
+  if (error) return c.json({ error: error.message }, 500);
+  if (!updated?.length) return c.json({ error: "El préstamo cambió. Recarga la ficha antes de guardar el plan." }, 409);
+  return c.json({ ...candidate, payments, ...computeLoan(candidate, payments), ...schedule });
 });
 
 app.delete("/api/loans/:id", async (c) => {
@@ -550,6 +581,13 @@ app.post("/api/loans/:id/payments", async (c) => {
   const available = allocation.schedule.slice(installmentNumber - 1).reduce((sum, r) => sum + r.remaining, 0);
   if (amount > Math.round(available * 100) / 100 + 0.001) {
     return c.json({ error: "El monto excede el saldo de las cuotas desde el mes seleccionado" }, 400);
+  }
+  if (currentLoan.payment_plan) {
+    const firstUnpaidInterest = allocation.schedule
+      .slice(0, currentLoan.payment_plan.interest_months).find(row => row.remaining > 0.001);
+    if (firstUnpaidInterest && installmentNumber !== firstUnpaidInterest.number) {
+      return c.json({ error: `Primero completa el interés de la cuota ${firstUnpaidInterest.number} antes de pasar al capital o a otro mes` }, 400);
+    }
   }
   if (allocation.schedule[installmentNumber - 1].remaining <= 0) {
     return c.json({ error: "La cuota elegida ya está pagada" }, 400);

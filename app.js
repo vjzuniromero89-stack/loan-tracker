@@ -677,7 +677,7 @@ async function renderPortalClient(clientId, token) {
               <tr>
                 <td>${formatDate(p.payment_date)}</td>
                 <td>${formatMoney(p.amount)}</td>
-                <td>${(allocationByPayment.get(p.id) || []).map(item => `${escapeHtml(new Date(item.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))}: ${formatMoney(item.amount)}`).join("<br>") || "-"}</td>
+                <td>${(allocationByPayment.get(p.id) || []).map(item => `${escapeHtml(new Date(item.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))}: ${formatMoney(item.amount)}${l.payment_plan ? ` (${formatMoney(item.interest_amount)} interés, ${formatMoney(item.principal_amount)} capital)` : ""}`).join("<br>") || "-"}</td>
                 <td class="wrap">${escapeHtml(p.notes || "-")}</td>
               </tr>`).join("")
           : `<tr><td colspan="4" class="empty-state">Todavía no hay pagos registrados</td></tr>`;
@@ -696,7 +696,7 @@ async function renderPortalClient(clientId, token) {
               <div class="detail-item"><div class="detail-label">Interés total</div><div class="detail-value">${l.interest_rate}%</div></div>
               <div class="detail-item"><div class="detail-label">Plazo</div><div class="detail-value">${l.term_months} meses</div></div>
               <div class="detail-item"><div class="detail-label">Total a pagar</div><div class="detail-value v-primary">${formatMoney(l.totalToPay)}</div></div>
-              <div class="detail-item"><div class="detail-label">${l.extension ? "Cuota original" : "Cuota mensual"}</div><div class="detail-value v-primary">${formatMoney(l.monthlyPayment)}</div></div>
+              <div class="detail-item"><div class="detail-label">${l.payment_plan ? "Cuota de interés" : l.extension ? "Cuota original" : "Cuota mensual"}</div><div class="detail-value v-primary">${formatMoney(l.monthlyPayment)}</div></div>
               <div class="detail-item"><div class="detail-label">Total pagado</div><div class="detail-value v-success">${formatMoney(l.totalPaid)}</div></div>
               <div class="detail-item"><div class="detail-label">Saldo pendiente</div><div class="detail-value ${l.pendingBalance > 0 ? "v-danger" : "v-success"}">${formatMoney(l.pendingBalance)}</div></div>
               <div class="detail-item"><div class="detail-label">Próximo vencimiento</div><div class="detail-value">${l.nextDueDate ? formatDate(l.nextDueDate) : "-"}</div></div>
@@ -707,6 +707,7 @@ async function renderPortalClient(clientId, token) {
             </div>
             ${overdueNote}
             ${renderExtensionSummary(l)}
+            ${renderPaymentPlanSummary(l)}
             ${l.notes ? `<div class="portal-loan-note"><strong>Nota del préstamo</strong><p>${escapeHtml(l.notes)}</p></div>` : ""}
           </div>
           ${renderInstallmentCalendar(l)}
@@ -746,22 +747,22 @@ function loanFormHtml(loan, clients, preselectedClient) {
       </div>
       <div class="field">
         <label>Monto prestado *</label>
-        <input type="number" id="f-principal" ${loan?.extension ? "readonly" : ""} min="0.01" step="0.01" value="${loan ? loan.principal : ""}" required />
+        <input type="number" id="f-principal" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="0.01" step="0.01" value="${loan ? loan.principal : ""}" required />
       </div>
       <div class="field">
         <label>Interés total del préstamo (%) *</label>
-        <input type="number" id="f-rate" ${loan?.extension ? "readonly" : ""} min="0" step="0.01" value="${loan ? loan.interest_rate : ""}" required />
+        <input type="number" id="f-rate" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="0" step="0.01" value="${loan ? loan.interest_rate : ""}" required />
       </div>
       <div class="field">
         <label>Plazo (meses) *</label>
-        <input type="number" id="f-term" ${loan?.extension ? "readonly" : ""} min="1" step="1" value="${loan ? loan.term_months : ""}" required />
+        <input type="number" id="f-term" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} min="1" step="1" value="${loan ? loan.term_months : ""}" required />
       </div>
       <div class="field">
         <label>Fecha de inicio *</label>
-        <input type="date" id="f-start" ${loan?.extension ? "readonly" : ""} value="${loan ? loan.start_date : todayStr()}" required />
+        <input type="date" id="f-start" ${loan?.extension || loan?.payment_plan ? "readonly" : ""} value="${loan ? loan.start_date : todayStr()}" required />
       </div>
       <div class="field full">
-        <p class="muted" style="margin:0;font-size:0.85rem;">${loan?.extension ? "Este préstamo tiene una prórroga. Puedes editar la nota; el calendario y los pagos quedan protegidos." : "Ejemplo: $5,000 al 40% = $2,000 de interés total → $7,000 a pagar, sea cual sea el plazo."}</p>
+        <p class="muted" style="margin:0;font-size:0.85rem;">${loan?.extension || loan?.payment_plan ? "Este préstamo tiene un calendario acordado. Puedes editar la nota; las condiciones y los pagos quedan protegidos." : "Ejemplo: $5,000 al 40% = $2,000 de interés total → $7,000 a pagar, sea cual sea el plazo."}</p>
       </div>
       <div class="field full">
         <label>Notas</label>
@@ -890,7 +891,7 @@ async function renderLoanDetail(id) {
         <tr>
           <td>${formatDate(p.payment_date)}</td>
           <td>${formatMoney(p.amount)}</td>
-          <td>${(allocationByPayment.get(p.id) || []).map(a => `${escapeHtml(new Date(a.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))}: ${formatMoney(a.amount)}`).join("<br>") || "-"}</td>
+          <td>${(allocationByPayment.get(p.id) || []).map(a => `${escapeHtml(new Date(a.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))}: ${formatMoney(a.amount)}${loan.payment_plan ? ` (${formatMoney(a.interest_amount)} interés, ${formatMoney(a.principal_amount)} capital)` : ""}`).join("<br>") || "-"}</td>
           <td class="wrap">${escapeHtml(p.notes || "-")}</td>
           <td><button class="btn-danger btn-sm" data-delete-payment="${p.id}">Eliminar</button></td>
         </tr>`).join("")
@@ -913,6 +914,7 @@ async function renderLoanDetail(id) {
         <div class="actions">
           <button class="btn-primary btn-sm" id="register-payment-btn">+ Registrar pago</button>
           ${loan.extension ? "" : `<button class="btn-secondary btn-sm" id="extend-loan-btn">+ Prorrogar préstamo</button>`}
+          ${loan.term_months > 1 ? `<button class="btn-secondary btn-sm" id="payment-plan-btn">${loan.payment_plan ? "Ajustar plan" : "+ Plan interés → capital"}</button>` : ""}
           <button class="btn-secondary btn-sm" id="edit-loan-btn">Editar</button>
           <button class="btn-danger btn-sm" id="delete-loan-btn">Eliminar</button>
         </div>
@@ -925,7 +927,7 @@ async function renderLoanDetail(id) {
         <div class="detail-item"><div class="detail-label">Inicio</div><div class="detail-value">${formatDate(loan.start_date)}</div></div>
         <div class="detail-item"><div class="detail-label">Ganancia (interés)</div><div class="detail-value v-profit">${formatMoney(loan.totalInterest)}</div></div>
         <div class="detail-item"><div class="detail-label">Total a pagar</div><div class="detail-value v-primary">${formatMoney(loan.totalToPay)}</div></div>
-        <div class="detail-item"><div class="detail-label">${loan.extension ? "Cuota original" : "Cuota mensual"}</div><div class="detail-value v-primary">${formatMoney(loan.monthlyPayment)}</div></div>
+        <div class="detail-item"><div class="detail-label">${loan.payment_plan ? "Cuota de interés" : loan.extension ? "Cuota original" : "Cuota mensual"}</div><div class="detail-value v-primary">${formatMoney(loan.monthlyPayment)}</div></div>
         <div class="detail-item"><div class="detail-label">Total pagado</div><div class="detail-value v-success">${formatMoney(loan.totalPaid)}</div></div>
         <div class="detail-item"><div class="detail-label">Saldo pendiente</div><div class="detail-value ${loan.pendingBalance > 0 ? "v-danger" : "v-success"}">${formatMoney(loan.pendingBalance)}</div></div>
         <div class="detail-item"><div class="detail-label">Próximo vencimiento</div><div class="detail-value">${loan.nextDueDate ? formatDate(loan.nextDueDate) : "-"}</div></div>
@@ -938,6 +940,7 @@ async function renderLoanDetail(id) {
       ${overdueNote}
       ${loan.notes ? `<p class="muted" style="margin-top:14px;">${escapeHtml(loan.notes)}</p>` : ""}
       ${renderExtensionSummary(loan)}
+      ${renderPaymentPlanSummary(loan)}
     </div>
 
     <div class="panel accent-primary">
@@ -964,6 +967,7 @@ async function renderLoanDetail(id) {
 
   document.getElementById("register-payment-btn").addEventListener("click", () => openPaymentModal(loan));
   document.getElementById("extend-loan-btn")?.addEventListener("click", () => openExtensionModal(loan));
+  document.getElementById("payment-plan-btn")?.addEventListener("click", () => openPaymentPlanModal(loan));
   document.getElementById("edit-loan-btn").addEventListener("click", () => openLoanModal(loan));
   document.getElementById("delete-loan-btn").addEventListener("click", () => {
     confirmModal(
@@ -986,6 +990,57 @@ async function renderLoanDetail(id) {
         renderLoanDetail(id);
       });
     });
+  });
+}
+
+function renderPaymentPlanSummary(loan) {
+  if (!loan.payment_plan) return "";
+  const months = loan.payment_plan.interest_months;
+  const schedule = loan.schedule || [];
+  const interestPaid = schedule.reduce((sum, row) => sum + row.interest_paid, 0);
+  const principalPaid = schedule.reduce((sum, row) => sum + row.principal_paid, 0);
+  return `<div class="payment-plan-summary"><strong>Plan: primero interés, después capital</strong>
+    <div>Meses 1–${months}: interés ${formatMoney(loan.totalInterest)} · cobrado ${formatMoney(interestPaid)}.</div>
+    <div>Meses ${months + 1}–${loan.term_months}: capital ${formatMoney(loan.principal)} · recuperado ${formatMoney(principalPaid)}.</div>
+  </div>`;
+}
+
+function openPaymentPlanModal(loan) {
+  openModal("Plan: interés antes del capital", `
+    <form id="plan-form">
+      <p class="muted">Define cuántos meses se usan para cobrar el interés total. El capital se reparte entre los meses restantes.</p>
+      <div class="field"><label>Meses para cobrar el interés *</label><input id="plan-months" type="number" min="1" max="${loan.term_months - 1}" step="1" value="${loan.payment_plan?.interest_months || Math.min(3, loan.term_months - 1)}" required /></div>
+      <div id="plan-preview" class="extension-preview" aria-live="polite"></div>
+      <div class="form-actions"><button id="cancel-btn" type="button" class="btn-secondary">Cancelar</button><button id="save-plan" type="submit" class="btn-primary">Guardar plan</button></div>
+    </form>`, {
+    onMount: root => {
+      root.querySelector("#cancel-btn").onclick = closeModal;
+      const monthsEl = root.querySelector("#plan-months");
+      const preview = () => {
+        const months = Number(monthsEl.value);
+        const valid = Number.isInteger(months) && months > 0 && months < loan.term_months;
+        root.querySelector("#save-plan").disabled = !valid;
+        if (!valid) { root.querySelector("#plan-preview").textContent = "Elige menos meses que el plazo total."; return; }
+        const interestMonthly = loan.totalInterest / months;
+        const capitalMonthly = loan.principal / (loan.term_months - months);
+        root.querySelector("#plan-preview").innerHTML = `<strong>Vista previa</strong>
+          <div>Primero: ${formatMoney(loan.totalInterest)} de interés en ${months} meses (aprox. ${formatMoney(interestMonthly)} por mes).</div>
+          <div>Después: ${formatMoney(loan.principal)} de capital en ${loan.term_months - months} meses (aprox. ${formatMoney(capitalMonthly)} por mes).</div>
+          <div>Total: ${formatMoney(loan.totalToPay)} · ya cobrado: ${formatMoney(loan.totalPaid)} · saldo: ${formatMoney(loan.pendingBalance)}.</div>
+          <small>Los pagos existentes mantienen fecha y monto; sus importes se aplicarán al calendario nuevo. Revisa los meses antes de guardar.</small>`;
+      };
+      monthsEl.addEventListener("input", preview);
+      preview();
+      root.querySelector("#plan-form").addEventListener("submit", async event => {
+        event.preventDefault();
+        try {
+          await api(`/api/loans/${loan.id}/payment-plan`, { method: "POST", body: JSON.stringify({ interest_months: Number(monthsEl.value) }) });
+          closeModal();
+          showToast("Plan de interés y capital guardado", "success");
+          renderLoanDetail(loan.id);
+        } catch (err) { showToast(err.message); }
+      });
+    },
   });
 }
 
@@ -1077,8 +1132,8 @@ function renderInstallmentCalendar(loan) {
         <div class="installment-summary-late"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "late").length}</strong><span>Atrasadas</span></div>
         <div class="installment-summary-pending"><strong>${(loan.schedule || []).filter(r => installmentStatus(r, todayStr()).tone === "pending").length}</strong><span>Pendientes</span></div>
       </div>
-      <div class="table-wrap installment-table-wrap"><table class="installment-table"><thead><tr><th>Mes</th><th>Vence</th><th>Cuota</th><th>Pagado</th><th>Falta</th><th>Estado</th><th>Avance</th></tr></thead><tbody>
-        ${(loan.schedule || []).map(r => renderInstallment(r, todayStr())).join("")}
+      <div class="table-wrap installment-table-wrap"><table class="installment-table"><thead><tr><th>Mes</th><th>Vence</th><th>Concepto</th><th>Cuota</th><th>Pagado</th><th>Falta</th><th>Estado</th><th>Avance</th></tr></thead><tbody>
+        ${(loan.schedule || []).map(r => renderInstallment(r, todayStr(), !!loan.payment_plan)).join("")}
       </tbody></table></div>
     </div>`;
 }
@@ -1090,13 +1145,14 @@ function installmentStatus(row, today) {
   return { label: "Pendiente", tone: "pending" };
 }
 
-function renderInstallment(row, today) {
+function renderInstallment(row, today, hasPlan) {
   const state = installmentStatus(row, today);
   const progress = row.amount > 0 ? Math.min(100, Math.max(0, Math.round(row.paid / row.amount * 100))) : 100;
   const month = new Date(row.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" });
   return `<tr class="installment-row installment-row-${state.tone}">
     <td><strong class="installment-month">${escapeHtml(month)}</strong><span class="installment-mobile-date">Vence ${formatDate(row.due_date)}</span></td>
     <td>${formatDate(row.due_date)}</td>
+    <td>${hasPlan ? `<span class="installment-kind ${row.interest_amount ? "installment-kind-interest" : "installment-kind-capital"}">${row.interest_amount ? "Interés" : "Capital"}</span>` : "-"}</td>
     <td>${formatMoney(row.amount)}</td>
     <td>${formatMoney(row.paid)}</td>
     <td><strong>${formatMoney(row.remaining)}</strong></td>
@@ -1106,7 +1162,9 @@ function renderInstallment(row, today) {
 }
 
 function openPaymentModal(loan) {
-  const openRows = (loan.schedule || []).filter(r => r.remaining > 0);
+  const firstUnpaidInterest = loan.payment_plan && (loan.schedule || []).slice(0, loan.payment_plan.interest_months).find(r => r.remaining > 0.001);
+  const interestOutstanding = !!firstUnpaidInterest;
+  const openRows = (loan.schedule || []).filter(r => r.remaining > 0 && (!interestOutstanding || r.number === firstUnpaidInterest.number));
   if (!openRows.length) return showToast("Todas las cuotas están pagadas", "success");
   const suggested = openRows[0];
   openModal("Registrar pago", `
@@ -1124,6 +1182,7 @@ function openPaymentModal(loan) {
         <div class="field full">
           <label>¿A qué mes corresponde? *</label>
           <select id="f-installment" required>${openRows.map(r => `<option value="${r.number}">${escapeHtml(new Date(r.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))} · vence ${formatDate(r.due_date)} · falta ${formatMoney(r.remaining)}</option>`).join("")}</select>
+          ${interestOutstanding ? `<p class="muted">Primero se completa el interés. Después se habilitan los meses de capital.</p>` : ""}
           <p class="muted" id="payment-preview" aria-live="polite"></p>
         </div>
         <div class="field full">
@@ -1145,7 +1204,7 @@ function openPaymentModal(loan) {
         const lines = [];
         for (const row of (loan.schedule || []).filter(r => r.number >= start)) {
           const take = Math.min(remaining, Math.round(row.remaining * 100));
-          if (take > 0) lines.push(`${new Date(row.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" })}: ${formatMoney(take / 100)}`);
+          if (take > 0) lines.push(`${new Date(row.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" })}: ${formatMoney(take / 100)}${loan.payment_plan ? row.interest_amount ? " interés" : " capital" : ""}`);
           remaining -= take;
           if (remaining <= 0) break;
         }

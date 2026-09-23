@@ -5,10 +5,11 @@
 //   total a pagar = 7000
 //   cuota mensual = 7000 / 5 = 1400 (capital + interes en partes iguales cada mes)
 
-import type { LoanExtension } from "./loanExtension";
+import type { LoanExtension, LoanPaymentPlan } from "./loanExtension";
 
 export interface LoanRecord {
   extension?: LoanExtension;
+  payment_plan?: LoanPaymentPlan;
   id: string;
   client_id: string;
   principal: number;
@@ -71,7 +72,9 @@ export function computeLoan(
     ? round2(loan.principal * (loan.extension.original_rate / 100) + loan.extension.additional_interest)
     : round2(loan.principal * (loan.interest_rate / 100));
   const totalToPay = round2(loan.principal + totalInterest);
-  const monthlyPayment = loan.extension
+  const monthlyPayment = loan.payment_plan
+    ? round2(totalInterest / loan.payment_plan.interest_months)
+    : loan.extension
     ? round2((loan.principal * (1 + loan.extension.original_rate / 100)) / loan.extension.original_months)
     : loan.term_months > 0 ? round2(totalToPay / loan.term_months) : 0;
   const allocation = installments(loan, payments);

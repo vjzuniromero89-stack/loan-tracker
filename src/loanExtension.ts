@@ -10,35 +10,37 @@ export interface LoanExtension {
   additional_interest: number;
   agreement_date: string;
 }
+export interface LoanPaymentPlan { interest_months: number }
 
 const PREFIX = '__LOAN_TRACKER_EXTENSION_V1__';
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-export function encodeLoanNotes(notes: string | null, extension: LoanExtension): string {
-  return PREFIX + JSON.stringify({ notes, extension });
+export function encodeLoanNotes(notes: string | null, extension?: LoanExtension, paymentPlan?: LoanPaymentPlan): string {
+  return PREFIX + JSON.stringify({ notes, extension: extension || null, payment_plan: paymentPlan || null });
 }
 
-export function decodeLoan<T extends LoanRecord>(row: T): T & { extension?: LoanExtension } {
+export function decodeLoan<T extends LoanRecord>(row: T): T & { extension?: LoanExtension; payment_plan?: LoanPaymentPlan } {
   if (typeof row.notes !== 'string' || !row.notes.startsWith(PREFIX)) return row;
   try {
     const payload = JSON.parse(row.notes.slice(PREFIX.length));
-    const e = payload.extension as LoanExtension;
-    if (!e || !Number.isInteger(e.original_months) || e.original_months < 1 ||
+    if (!(typeof payload.notes === 'string' || payload.notes === null)) return row;
+    const e = payload.extension as LoanExtension | null;
+    const p = payload.payment_plan as LoanPaymentPlan | null;
+    if (e && (!Number.isInteger(e.original_months) || e.original_months < 1 ||
         !Number.isInteger(e.additional_months) || e.additional_months < 1 ||
         !Number.isFinite(e.original_rate) || !Number.isFinite(e.additional_rate) ||
         !Number.isFinite(e.additional_interest) || e.additional_interest < 0 ||
         !Number.isFinite(e.base_amount) || e.base_amount < 0 ||
         !['original', 'remaining'].includes(e.calculation_base) ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(e.agreement_date) ||
-        !(typeof payload.notes === 'string' || payload.notes === null)) return row;
+        !/^\d{4}-\d{2}-\d{2}$/.test(e.agreement_date))) return row;
+    const n = e ? e.original_months + e.additional_months : Number(row.term_months);
+    if (p && (!Number.isInteger(p.interest_months) || p.interest_months < 1 || p.interest_months >= n)) return row;
+    if (!e && !p) return row;
     return {
-      ...row,
-      notes: payload.notes,
-      extension: e,
-      term_months: e.original_months + e.additional_months,
-      interest_rate: round2(e.original_rate + e.additional_interest / Number(row.principal) * 100),
+      ...row, notes: payload.notes,
+      ...(e ? { extension: e, term_months: n,
+        interest_rate: round2(e.original_rate + e.additional_interest / Number(row.principal) * 100) } : {}),
+      ...(p ? { payment_plan: p } : {}),
     };
-  } catch {
-    return row;
-  }
+  } catch { return row; }
 }
