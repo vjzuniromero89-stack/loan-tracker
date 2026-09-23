@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { installments } from "./installments";
 import { computeLoan, type LoanRecord } from "./loanCalc";
 import { createSessionToken, verifySessionToken } from "./auth";
 import {
@@ -386,7 +387,7 @@ app.get("/api/loans/:id", async (c) => {
 
   const payments = await fetchPaymentsForLoan(supabase, id);
   const computed = computeLoan(loan as LoanRecord, payments);
-  return c.json({ ...loanWithClient, payments, ...computed });
+  return c.json({ ...loanWithClient, payments, ...computed, ...installments(loan as LoanRecord, payments) });
 });
 
 app.put("/api/loans/:id", async (c) => {
@@ -470,12 +471,29 @@ app.post("/api/loans/:id/payments", async (c) => {
       ? body.payment_date
       : new Date().toISOString().slice(0, 10);
 
+  const existing = await fetchPaymentsForLoan(supabase, loanId);
+  const allocation = installments(loan as LoanRecord, existing);
+  const installmentNumber = Number(body.installment_number);
+  if (!Number.isInteger(installmentNumber) || installmentNumber < 1 || installmentNumber > Number(loan.term_months)) {
+    return c.json({ error: "Selecciona una cuota válida del plazo" }, 400);
+  }
+  const available = allocation.schedule.slice(installmentNumber - 1).reduce((sum, r) => sum + r.remaining, 0);
+  if (amount > Math.round(available * 100) / 100 + 0.001) {
+    return c.json({ error: "El monto excede el saldo de las cuotas desde el mes seleccionado" }, 400);
+  }
+  if (allocation.schedule[installmentNumber - 1].remaining <= 0) {
+    return c.json({ error: "La cuota elegida ya está pagada" }, 400);
+  }
+  if (!Number.isFinite(amount) || Math.round(amount * 100) !== amount * 100) {
+    return c.json({ error: "Usa un monto válido con hasta dos decimales" }, 400);
+  }
   const id = crypto.randomUUID();
   const { error } = await supabase.from(PAYMENTS_TABLE).insert({
     id,
     loan_id: loanId,
     amount,
     payment_date: paymentDate,
+    installment_number: installmentNumber,
     notes: (body.notes as string) || null,
   });
   if (error) return c.json({ error: error.message }, 500);
@@ -483,7 +501,7 @@ app.post("/api/loans/:id/payments", async (c) => {
   const payments = await fetchPaymentsForLoan(supabase, loanId);
   const computed = computeLoan(loan as unknown as LoanRecord, payments);
   return c.json(
-    { payment: { id, loan_id: loanId, amount, payment_date: paymentDate }, payments, ...computed },
+    { payment: { id, loan_id: loanId, amount, payment_date: paymentDate, installment_number: installmentNumber }, payments, ...computed },
     201
   );
 });

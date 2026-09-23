@@ -17,6 +17,7 @@ export interface LoanRecord {
 }
 
 export interface PaymentRecord {
+  installment_number?: number | null;
   id: string;
   loan_id: string;
   amount: number;
@@ -54,11 +55,7 @@ function monthDiff(start: Date, end: Date): number {
   return months;
 }
 
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date.getTime());
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
+import { installments } from "./installments";
 
 const OVERDUE_TOLERANCE = 0.5; // tolerancia en la moneda local para evitar falsos atrasos por redondeo
 
@@ -70,7 +67,8 @@ export function computeLoan(
   const totalInterest = round2(loan.principal * (loan.interest_rate / 100));
   const totalToPay = round2(loan.principal + totalInterest);
   const monthlyPayment = loan.term_months > 0 ? round2(totalToPay / loan.term_months) : 0;
-  const totalPaid = round2(payments.reduce((sum, p) => sum + p.amount, 0));
+  const allocation = installments(loan, payments);
+  const totalPaid = round2(payments.reduce((sum, p) => sum + Number(p.amount), 0));
   const pendingBalance = round2(Math.max(totalToPay - totalPaid, 0));
   const percentPaid =
     totalToPay > 0 ? round2(Math.min((totalPaid / totalToPay) * 100, 100)) : 0;
@@ -80,10 +78,9 @@ export function computeLoan(
   if (monthsElapsed < 0) monthsElapsed = 0;
   if (monthsElapsed > loan.term_months) monthsElapsed = loan.term_months;
 
-  const expectedPaidToDate = round2(
-    Math.min(monthlyPayment * monthsElapsed, totalToPay)
-  );
-  const overdueAmount = round2(Math.max(expectedPaidToDate - totalPaid, 0));
+  const today = asOf.toISOString().slice(0, 10);
+  const expectedPaidToDate = round2(allocation.schedule.filter(r => r.due_date < today).reduce((sum, r) => sum + r.amount, 0));
+  const overdueAmount = round2(allocation.schedule.filter(r => r.due_date < today).reduce((sum, r) => sum + r.remaining, 0));
 
   let status: LoanStatus;
   if (pendingBalance <= 0) {
@@ -96,9 +93,7 @@ export function computeLoan(
 
   let nextDueDate: string | null = null;
   if (status !== "pagado" && monthlyPayment > 0) {
-    const paymentsCovered = Math.floor((totalPaid + 0.0001) / monthlyPayment);
-    const nextIndex = Math.min(paymentsCovered + 1, loan.term_months);
-    nextDueDate = addMonths(start, nextIndex).toISOString().slice(0, 10);
+    nextDueDate = allocation.schedule.find(r => r.remaining > 0)?.due_date || null;
   }
 
   return {

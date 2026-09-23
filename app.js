@@ -119,11 +119,13 @@ function buildWaterfall(loan) {
 // total es capital (lo que se le prestó) y cuánto es ganancia (interés).
 function buildSplitSummary(totals) {
   const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-  const total = totals.totalAPagar > 0 ? totals.totalAPagar : totals.prestado + totals.ganancia;
-  if (!total) return "";
-  let pctCapital = Math.round((totals.prestado / total) * 100);
-  pctCapital = Math.min(Math.max(pctCapital, 0), 100);
-  const pctGanancia = 100 - pctCapital;
+  if (!totals.prestado) return "";
+  // La ganancia se muestra como porcentaje del capital prestado (lo mismo
+  // que el interés que le cobras al cliente): si prestas $5,000 al 40%,
+  // la ganancia es 40% y el capital ocupa el resto de la barra.
+  let pctGanancia = Math.round((totals.ganancia / totals.prestado) * 100);
+  pctGanancia = Math.min(Math.max(pctGanancia, 0), 100);
+  const pctCapital = 100 - pctGanancia;
 
   const seg = (pct, extraClass, label) =>
     `<div class="split-seg ${extraClass}" data-w="${pct}" style="width:0%">${pct >= 12 ? `<span>${pct}%</span>` : ""}</div>`;
@@ -864,11 +866,18 @@ async function renderLoanDetail(id) {
   const loan = await api(`/api/loans/${id}`);
   pageTitleEl.textContent = `Préstamo de ${loan.client_name}`;
 
+  const allocationByPayment = new Map();
+  for (const a of loan.allocations || []) {
+    const list = allocationByPayment.get(a.payment_id) || [];
+    list.push(a);
+    allocationByPayment.set(a.payment_id, list);
+  }
   const paymentRows = loan.payments.length
     ? loan.payments.slice().reverse().map((p) => `
         <tr>
           <td>${formatDate(p.payment_date)}</td>
           <td>${formatMoney(p.amount)}</td>
+          <td>${(allocationByPayment.get(p.id) || []).map(a => `${escapeHtml(new Date(a.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))}: ${formatMoney(a.amount)}`).join("<br>") || "-"}</td>
           <td class="wrap">${escapeHtml(p.notes || "-")}</td>
           <td><button class="btn-danger btn-sm" data-delete-payment="${p.id}">Eliminar</button></td>
         </tr>`).join("")
@@ -925,10 +934,16 @@ async function renderLoanDetail(id) {
     </div>
 
     <div class="panel">
+      <div class="panel-header"><h2>Calendario de cuotas</h2></div>
+      <div class="table-wrap"><table><thead><tr><th>Mes</th><th>Vence</th><th>Cuota</th><th>Pagado</th><th>Pendiente</th></tr></thead><tbody>
+        ${(loan.schedule || []).map(r => `<tr><td>${escapeHtml(new Date(r.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))}</td><td>${formatDate(r.due_date)}</td><td>${formatMoney(r.amount)}</td><td>${formatMoney(r.paid)}</td><td>${formatMoney(r.remaining)}</td></tr>`).join("")}
+      </tbody></table></div>
+    </div>
+    <div class="panel">
       <div class="panel-header"><h2>Historial de pagos</h2></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Fecha</th><th>Monto</th><th class="wrap">Notas</th><th></th></tr></thead>
+          <thead><tr><th>Fecha cobrada</th><th>Monto</th><th>Mes aplicado</th><th class="wrap">Notas</th><th></th></tr></thead>
           <tbody>${paymentRows}</tbody>
         </table>
       </div>
@@ -964,17 +979,25 @@ async function renderLoanDetail(id) {
 }
 
 function openPaymentModal(loan) {
+  const openRows = (loan.schedule || []).filter(r => r.remaining > 0);
+  if (!openRows.length) return showToast("Todas las cuotas están pagadas", "success");
+  const suggested = openRows[0];
   openModal("Registrar pago", `
     <form id="payment-form">
       <p class="muted">Saldo pendiente actual: <strong>${formatMoney(loan.pendingBalance)}</strong></p>
       <div class="form-grid">
         <div class="field">
           <label>Monto pagado *</label>
-          <input type="number" id="f-amount" min="0.01" step="0.01" value="${loan.monthlyPayment}" required />
+          <input type="number" id="f-amount" min="0.01" step="0.01" value="${Math.min(suggested.remaining, loan.pendingBalance)}" required />
         </div>
         <div class="field">
           <label>Fecha de pago *</label>
           <input type="date" id="f-date" value="${todayStr()}" required />
+        </div>
+        <div class="field full">
+          <label>¿A qué mes corresponde? *</label>
+          <select id="f-installment" required>${openRows.map(r => `<option value="${r.number}">${escapeHtml(new Date(r.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" }))} · vence ${formatDate(r.due_date)} · falta ${formatMoney(r.remaining)}</option>`).join("")}</select>
+          <p class="muted" id="payment-preview" aria-live="polite"></p>
         </div>
         <div class="field full">
           <label>Notas</label>
@@ -989,11 +1012,27 @@ function openPaymentModal(loan) {
   `, {
     onMount: (root) => {
       root.querySelector("#cancel-btn").onclick = closeModal;
+      const preview = () => {
+        let remaining = Math.round(Number(root.querySelector("#f-amount").value) * 100);
+        const start = Number(root.querySelector("#f-installment").value);
+        const lines = [];
+        for (const row of (loan.schedule || []).filter(r => r.number >= start)) {
+          const take = Math.min(remaining, Math.round(row.remaining * 100));
+          if (take > 0) lines.push(`${new Date(row.due_date + "T12:00:00Z").toLocaleDateString("es", { month: "long", year: "numeric", timeZone: "UTC" })}: ${formatMoney(take / 100)}`);
+          remaining -= take;
+          if (remaining <= 0) break;
+        }
+        root.querySelector("#payment-preview").textContent = lines.length ? `Este pago se aplicará a: ${lines.join(" · ")}${remaining > 0 ? " · El monto excede el saldo" : ""}` : "Indica un monto para ver los meses cubiertos";
+      };
+      root.querySelector("#f-amount").addEventListener("input", preview);
+      root.querySelector("#f-installment").addEventListener("change", preview);
+      preview();
       root.querySelector("#payment-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         const payload = {
           amount: root.querySelector("#f-amount").value,
           payment_date: root.querySelector("#f-date").value,
+          installment_number: Number(root.querySelector("#f-installment").value),
           notes: root.querySelector("#f-notes").value.trim(),
         };
         try {

@@ -1,0 +1,39 @@
+import type { LoanRecord, PaymentRecord } from './loanCalc';
+
+const cents = (n: number) => Math.round(n * 100);
+export function dueDate(start: string, number: number): string {
+  const [y, m, d] = start.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + number, 1));
+  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(d, lastDay));
+  return first.toISOString().slice(0, 10);
+}
+export function installments(loan: LoanRecord, payments: PaymentRecord[]) {
+  const total = cents(Number(loan.principal) * (1 + Number(loan.interest_rate) / 100));
+  const n = Number(loan.term_months);
+  if (!Number.isInteger(n) || n < 1) return { schedule: [], allocations: [], unallocated: 0 };
+  const base = Math.floor(total / n);
+  const schedule = Array.from({ length: n }, (_, i) => ({
+    number: i + 1, due_date: dueDate(loan.start_date, i + 1),
+    amount: (i === n - 1 ? total - base * (n - 1) : base) / 100,
+    paid: 0, remaining: (i === n - 1 ? total - base * (n - 1) : base) / 100,
+  }));
+  const allocations: { payment_id: string; number: number; due_date: string; amount: number }[] = [];
+  let unallocated = 0;
+  for (const payment of payments.slice().sort((a, b) => a.payment_date.localeCompare(b.payment_date) || (a.created_at || '').localeCompare(b.created_at || '') || a.id.localeCompare(b.id))) {
+    let left = cents(Number(payment.amount));
+    const start = payment.installment_number && Number.isInteger(Number(payment.installment_number))
+      ? Number(payment.installment_number) - 1 : 0;
+    for (let i = Math.max(0, start); i < n && left > 0; i++) {
+      const row = schedule[i];
+      const take = Math.min(left, cents(row.remaining));
+      if (!take) continue;
+      row.paid = (cents(row.paid) + take) / 100;
+      row.remaining = (cents(row.remaining) - take) / 100;
+      allocations.push({ payment_id: payment.id, number: i + 1, due_date: row.due_date, amount: take / 100 });
+      left -= take;
+    }
+    unallocated += left;
+  }
+  return { schedule, allocations, unallocated: unallocated / 100 };
+}

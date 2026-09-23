@@ -135,3 +135,11 @@ loan-tracker/
 - La cookie es `HttpOnly` (no accesible desde JavaScript en el navegador) y solo dura 30 días; si cierras sesión o pasa ese tiempo, hay que volver a poner la contraseña.
 - Las tablas en Supabase tienen Row Level Security (RLS) activado sin reglas públicas: solo el servidor (con la `service_role` key) puede leer o escribir. Esa llave nunca se envía al navegador — vive únicamente como secreto dentro de Cloudflare.
 - `APP_PASSWORD`, `AUTH_SECRET` y `SUPABASE_SERVICE_ROLE_KEY` son secretos: nunca los compartas ni los subas a ningún repositorio público.
+
+## Actualización: cuotas por mes
+
+Antes de publicar esta versión, ejecuta `migrations/20260923_payment_installment.sql` en el SQL Editor del proyecto Supabase que usa la app. Luego despliega el Worker. Sin esta columna nueva el registro de pagos fallará.
+
+La primera cuota vence un mes después de `start_date`; para fechas como el 31, el vencimiento se ajusta al último día del mes. El sistema propone la cuota pendiente más antigua. Al registrar, eliges el mes y ves cómo se reparte el monto entre esa cuota y las siguientes; admite pagos parciales y varias cuotas en un solo pago. Guarda por separado el día del cobro y el número de la primera cuota a la que se aplica. En el detalle aparecen el calendario y los meses cubiertos por cada pago.
+
+Ejemplo: una cuota que vence en agosto y se cobra en septiembre queda registrada con fecha de cobro en septiembre y cuota de agosto. Las cuotas vencidas y todavía pendientes determinan el atraso actual. Los pagos anteriores se aplican cronológicamente a las cuotas más antiguas porque antes no se guardaba su mes; revisa manualmente los casos históricos que se habían atribuido a un mes distinto.
