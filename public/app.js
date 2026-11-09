@@ -405,11 +405,6 @@ function clientFormHtml(client = {}) {
         <label>Dirección</label>
         <input type="text" id="f-address" value="${escapeHtml(client.address || "")}" />
       </div>
-      ${loan ? "" : `<div class="field full"><label for="f-payment-mode">Forma de cobrar *</label>
-        <select id="f-payment-mode"><option value="monthly">Cuotas mensuales durante todo el plazo</option><option value="interest_first">Cobrar interés primero y después capital</option></select></div>
-      <div class="field full" id="f-interest-months-field" hidden><label for="f-interest-months">Meses para cobrar el interés *</label>
-        <input id="f-interest-months" type="number" min="1" step="1" value="2" />
-        <small id="f-payment-preview" class="muted"></small></div>`}
       <div class="field full">
         <label>Notas</label>
         <textarea id="f-notes">${escapeHtml(client.notes || "")}</textarea>
@@ -773,6 +768,11 @@ function loanFormHtml(loan, clients, preselectedClient) {
         <label>Fecha de inicio *</label>
         <input type="date" id="f-start" value="${loan ? loan.start_date : todayStr()}" required />
       </div>
+      ${loan ? "" : `<div class="field full"><label for="f-payment-mode">Forma de cobrar *</label>
+        <select id="f-payment-mode"><option value="monthly">Cuotas mensuales durante todo el plazo</option><option value="interest_first">Cobrar interés primero y después capital</option></select></div>
+      <div class="field full" id="f-interest-months-field" hidden><label for="f-interest-months">Meses para cobrar el interés *</label>
+        <input id="f-interest-months" type="number" min="1" step="1" value="2" />
+        <small id="f-payment-preview" class="muted"></small></div>`}
       <div class="field full">
         <p class="muted" style="margin:0;font-size:0.85rem;">${loan?.extension || loan?.payment_plan ? "Puedes modificar el préstamo inicial. La extensión se recalculará y los pagos registrados se conservarán si caben en el nuevo calendario." : "Ejemplo: $5,000 al 40% = $2,000 de interés total → $7,000 a pagar, sea cual sea el plazo."}</p>
       </div>
